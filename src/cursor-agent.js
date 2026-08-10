@@ -1,11 +1,17 @@
 import fs from "node:fs/promises";
-import path from "node:path";
 import { config } from "./config.js";
 import { artifactPath, sleep, waitUntil } from "./browser.js";
+import {
+  detectHardBlocker,
+  dismissBlockingUi,
+  installDialogHandlers,
+} from "./popups.js";
 
 export async function openCursorAgent(page) {
+  await installDialogHandlers(page);
   await page.goto(config.cursorUrl, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(2500);
+  await dismissBlockingUi(page, { label: "Cursor" });
 }
 
 export async function isCursorLoggedIn(page) {
@@ -58,6 +64,17 @@ async function getComposer(page) {
 }
 
 export async function sendPromptToCursor(page, prompt) {
+  await dismissBlockingUi(page, { label: "Cursor" });
+  const blocker = await detectHardBlocker(page);
+  if (blocker) {
+    console.warn(`Cursor blocker before send: ${blocker.message}`);
+    console.warn("Waiting up to 10 minutes for you to clear it in Chrome...");
+    await waitUntil("Cursor blocker cleared", 600_000, async () => {
+      await dismissBlockingUi(page, { label: "Cursor" });
+      return !(await detectHardBlocker(page));
+    });
+  }
+
   const composer = await getComposer(page);
   if (!composer) throw new Error("Cursor composer not found. Are you logged in?");
 
@@ -90,7 +107,21 @@ export async function sendPromptToCursor(page, prompt) {
 }
 
 export async function waitForCursorReply(page, previousText) {
+  let blockerAnnunciated = false;
   await waitUntil("Cursor agent reply", config.cursorReplyTimeoutMs, async () => {
+    await dismissBlockingUi(page, { label: "Cursor" });
+
+    const blocker = await detectHardBlocker(page);
+    if (blocker) {
+      if (!blockerAnnunciated) {
+        console.warn(blocker.message);
+        console.warn("Script will keep waiting while soft popups are auto-dismissed.");
+        blockerAnnunciated = true;
+      }
+      // Soft-wait: user may fix GitHub auth; keep polling instead of failing immediately.
+      return false;
+    }
+
     const busy = await isCursorBusy(page);
     if (busy) return false;
 
@@ -100,6 +131,7 @@ export async function waitForCursorReply(page, previousText) {
 
     // Stable for one poll.
     await sleep(2000);
+    await dismissBlockingUi(page, { label: "Cursor" });
     const again = await getLatestCursorText(page).catch(() => "");
     const stillBusy = await isCursorBusy(page);
     return again === text && !stillBusy;

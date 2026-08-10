@@ -24,6 +24,7 @@ import {
   waitForCursorReply,
   writeCursorDump,
 } from "./cursor-agent.js";
+import { denyBrowserPermissions, dismissBlockingUi, installDialogHandlers } from "./popups.js";
 
 const checkLoginOnly = process.argv.includes("--check-login");
 
@@ -66,6 +67,7 @@ async function runLoop(gptPage, cursorPage) {
 
     await gptPage.bringToFront();
     await openChatGpt(gptPage);
+    await dismissBlockingUi(gptPage, { label: "ChatGPT" });
 
     const assistantText = await getLatestAssistantText(gptPage);
     console.log(`GPT latest message length: ${assistantText.length} chars`);
@@ -86,6 +88,7 @@ async function runLoop(gptPage, cursorPage) {
 
     await cursorPage.bringToFront();
     await openCursorAgent(cursorPage);
+    await dismissBlockingUi(cursorPage, { label: "Cursor" });
 
     const previousCursorText = await getLatestCursorText(cursorPage).catch(() => "");
     await sendPromptToCursor(cursorPage, prompt);
@@ -146,12 +149,17 @@ async function main() {
 
   await ensureArtifactsDir();
   const { context } = await connectBrowser();
+  await denyBrowserPermissions(context);
 
   const gptPage = await getOrCreatePage(context, ["chatgpt.com"]);
   const cursorPage = await getOrCreatePage(context, ["cursor.com"]);
+  await installDialogHandlers(gptPage);
+  await installDialogHandlers(cursorPage);
 
   await openChatGpt(gptPage);
   await openCursorAgent(cursorPage);
+  await dismissBlockingUi(gptPage, { label: "ChatGPT" });
+  await dismissBlockingUi(cursorPage, { label: "Cursor" });
   await assertOrWaitLogin(gptPage, cursorPage);
 
   if (checkLoginOnly) {

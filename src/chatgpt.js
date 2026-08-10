@@ -1,13 +1,12 @@
 import { config } from "./config.js";
 import { sleep, waitUntil } from "./browser.js";
-
-function visible(locator) {
-  return locator.filter({ visible: true });
-}
+import { dismissBlockingUi, installDialogHandlers } from "./popups.js";
 
 export async function openChatGpt(page) {
+  await installDialogHandlers(page);
   await page.goto(config.gptUrl, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(2000);
+  await dismissBlockingUi(page, { label: "ChatGPT" });
 }
 
 export async function isChatGptLoggedIn(page) {
@@ -108,6 +107,7 @@ export function extractCursorPrompt(assistantText) {
 }
 
 export async function sendToChatGpt(page, { text, imagePaths = [] }) {
+  await dismissBlockingUi(page, { label: "ChatGPT" });
   const composer = await getComposer(page);
   if (!composer) throw new Error("ChatGPT composer not found. Are you logged in?");
 
@@ -165,6 +165,7 @@ async function waitForGptReplySettled(page) {
 
   // Wait for generation to start (text changes or stop button appears).
   await waitUntil("ChatGPT generation start", 120_000, async () => {
+    await dismissBlockingUi(page, { label: "ChatGPT" });
     const stop = page.getByRole("button", { name: /stop/i }).first();
     if (await stop.isVisible().catch(() => false)) return true;
     const current = await getLatestAssistantText(page).catch(() => "");
@@ -173,6 +174,7 @@ async function waitForGptReplySettled(page) {
 
   // Then wait until stop button disappears / streaming ends.
   await waitUntil("ChatGPT generation finish", config.gptReplyTimeoutMs, async () => {
+    await dismissBlockingUi(page, { label: "ChatGPT" });
     const stop = page.getByRole("button", { name: /stop/i }).first();
     const stopVisible = await stop.isVisible().catch(() => false);
     if (stopVisible) return false;

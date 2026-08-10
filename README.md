@@ -61,3 +61,10 @@ SYNC_PROFILE=0 bash scripts/start-chrome.sh
 - Stops when GPT replies with: `Automation Done`
 
 Override in `.env` if needed.
+
+## Notes
+
+- Keep that Chrome window open while the script runs.
+- Soft popups (notifications, cookies, "Not now" / "Don't ask again") are auto-dismissed.
+- Hard blockers (Cursor "Agent is blocked", GitHub reauth, Cloudflare) are detected; the script waits and logs what to fix in Chrome.
+- Artifacts are saved under `artifacts/`.
