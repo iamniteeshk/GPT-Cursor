@@ -109,8 +109,8 @@ async function runLoop(gptPage, cursorPage) {
         ? `Attached ${images.length} screenshot(s)/image(s) from Cursor.`
         : "No images were captured from Cursor this round.",
       "",
-      "Please write the next Cursor prompt.",
-      `When the overall goal is done, reply with exactly: ${config.stopPhrase}`,
+      "Write the next prompt for Cursor now.",
+      `If the website/app has reached a finishing stage, reply with ONLY these 2 words and nothing else: ${config.stopPhrase}`,
     ].join("\n");
 
     await gptPage.bringToFront();

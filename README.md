@@ -54,9 +54,10 @@ Skip re-copying an already-seeded profile:
 SYNC_PROFILE=0 bash scripts/start-chrome.sh
 ```
 
-## Default URLs
+## Default URLs / stop phrase
 
-- GPT: `https://chatgpt.com/c/6a79d41c-5274-83ee-8822-c78db9ded87f`
+- GPT: `https://chatgpt.com/c/6a7a07c4-635c-83ee-adf7-d03cb6bbf421`
 - Cursor: `https://cursor.com/agents/bc-a815a9ed-9dda-47b4-96db-e0d48dad0c95`
+- Stops when GPT replies with: `Automation Done`
 
 Override in `.env` if needed.
