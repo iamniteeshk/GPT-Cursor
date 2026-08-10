@@ -1,88 +1,62 @@
 # GPT ↔ Cursor automation
 
-Automates your copy-paste loop between ChatGPT and a Cursor agent using **your Chrome profile** (no OpenAI/Cursor APIs).
+Automates your copy-paste loop between ChatGPT and a Cursor agent using your Chrome login cookies (**no APIs**).
 
-Flow:
-1. Read the latest prompt from the GPT chat
-2. Paste it into the Cursor agent
-3. Wait for Cursor to finish
-4. Paste Cursor text + screenshots back into GPT
-5. Repeat until GPT replies with `AUTOMATION COMPLETED`
+## Why `~/.gpt-cursor-chrome`?
 
-Default chats:
-- GPT: `https://chatgpt.com/c/6a79d41c-5274-83ee-8822-c78db9ded87f`
-- Cursor: `https://cursor.com/agents/bc-a815a9ed-9dda-47b4-96db-e0d48dad0c95`
+Newer Chrome errors with:
 
-## Prerequisites
+`DevTools remote debugging requires a non-default data directory`
 
-- Node.js 18+
-- Google Chrome
-- Already logged into ChatGPT and Cursor in that Chrome profile
+So the start script copies your real Chrome profile into **`~/.gpt-cursor-chrome`** and launches that debug copy with port `9222`.
 
 ## Setup
 
 ```bash
-git clone https://github.com/iamniteeshk/GPT-Cursor.git
-cd GPT-Cursor
-git checkout cursor/gpt-cursor-automation-fb11
+git pull
 npm install
-cp .env.example .env
+cp -n .env.example .env
 ```
 
-## Test commands (Mac)
-
-Chrome must be started **with** remote debugging. If Chrome was already open, macOS prints `Opening in existing browser session` and port `9222` never opens.
+## Mac test commands
 
 ```bash
-# 1) This quits Chrome, relaunches with debugging, and verifies port 9222
 bash scripts/start-chrome.sh
-
-# 2) You must see: "CDP is ready at http://127.0.0.1:9222"
-#    Optional manual check:
-curl http://127.0.0.1:9222/json/version
-
-# 3) Confirm login, then run
-npm run check-login
-npm start
 ```
 
-If step 1 still fails:
-1. Press **Cmd+Q** in Chrome (fully quit)
-2. Open **Activity Monitor** → quit any remaining **Google Chrome**
-3. Run `bash scripts/start-chrome.sh` again
-
-## Windows
-
-```powershell
-.\scripts\start-chrome.ps1
-npm run check-login
-npm start
-```
-
-## What success looks like
-
-`start-chrome.sh` should end with:
+You must see:
 
 ```text
 CDP is ready at http://127.0.0.1:9222
-SUCCESS. Next:
-  npm run check-login
-  npm start
+SUCCESS.
 ```
 
-If you instead see only `Opening in existing browser session.` and the command returns immediately, debugging did **not** start — quit Chrome fully and rerun the script.
+Then:
 
-## Useful .env knobs
-
-```env
-GPT_URL=https://chatgpt.com/c/6a79d41c-5274-83ee-8822-c78db9ded87f
-CURSOR_URL=https://cursor.com/agents/bc-a815a9ed-9dda-47b4-96db-e0d48dad0c95
-CDP_URL=http://127.0.0.1:9222
-STOP_PHRASE=AUTOMATION COMPLETED
+```bash
+curl http://127.0.0.1:9222/json/version
+npm run check-login
+npm start
 ```
 
-## Notes
+If the debug Chrome window asks you to sign into ChatGPT or Cursor, sign in once there, then rerun `npm run check-login`.
 
-- Keep that Chrome window open while the script runs.
-- Do not manually type in those two tabs during a loop.
-- Artifacts are saved under `artifacts/`.
+## What the start script does
+
+1. Quits normal Chrome (needed to copy cookies safely)
+2. Seeds `~/.gpt-cursor-chrome` from your real profile
+3. Starts that **non-default** profile with `--remote-debugging-port=9222`
+4. Verifies CDP before exiting
+
+Skip re-copying an already-seeded profile:
+
+```bash
+SYNC_PROFILE=0 bash scripts/start-chrome.sh
+```
+
+## Default URLs
+
+- GPT: `https://chatgpt.com/c/6a79d41c-5274-83ee-8822-c78db9ded87f`
+- Cursor: `https://cursor.com/agents/bc-a815a9ed-9dda-47b4-96db-e0d48dad0c95`
+
+Override in `.env` if needed.
