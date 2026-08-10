@@ -24,55 +24,53 @@ Default chats:
 ```bash
 git clone https://github.com/iamniteeshk/GPT-Cursor.git
 cd GPT-Cursor
+git checkout cursor/gpt-cursor-automation-fb11
 npm install
-copy .env.example .env   # Windows
-# cp .env.example .env   # macOS/Linux
+cp .env.example .env
 ```
 
-## Test commands
+## Test commands (Mac)
 
-### 1) Close all Chrome windows
+Chrome must be started **with** remote debugging. If Chrome was already open, macOS prints `Opening in existing browser session` and port `9222` never opens.
 
-Chrome must be fully closed before starting with remote debugging.
-
-### 2) Start Chrome with your logged-in profile
-
-**Windows (PowerShell):**
-```powershell
-.\scripts\start-chrome.ps1
-```
-
-If your profile is not `Default` (for example `Profile 1`):
-```powershell
-.\scripts\start-chrome.ps1 -ProfileDirectory "Profile 1"
-```
-
-**macOS / Linux:**
 ```bash
+# 1) This quits Chrome, relaunches with debugging, and verifies port 9222
 bash scripts/start-chrome.sh
-# or
-bash scripts/start-chrome.sh 9222 "Profile 1"
-```
 
-Confirm ChatGPT + Cursor are logged in in that Chrome window.
+# 2) You must see: "CDP is ready at http://127.0.0.1:9222"
+#    Optional manual check:
+curl http://127.0.0.1:9222/json/version
 
-### 3) Check login only
-
-```bash
+# 3) Confirm login, then run
 npm run check-login
-```
-
-### 4) Run the full automation
-
-```bash
 npm start
 ```
 
-The script will:
-- connect to Chrome at `http://127.0.0.1:9222`
-- wait if login is missing
-- loop until GPT says `AUTOMATION COMPLETED`
-- save prompts/replies/screenshots under `artifacts/`
+If step 1 still fails:
+1. Press **Cmd+Q** in Chrome (fully quit)
+2. Open **Activity Monitor** → quit any remaining **Google Chrome**
+3. Run `bash scripts/start-chrome.sh` again
+
+## Windows
+
+```powershell
+.\scripts\start-chrome.ps1
+npm run check-login
+npm start
+```
+
+## What success looks like
+
+`start-chrome.sh` should end with:
+
+```text
+CDP is ready at http://127.0.0.1:9222
+SUCCESS. Next:
+  npm run check-login
+  npm start
+```
+
+If you instead see only `Opening in existing browser session.` and the command returns immediately, debugging did **not** start — quit Chrome fully and rerun the script.
 
 ## Useful .env knobs
 
@@ -81,13 +79,10 @@ GPT_URL=https://chatgpt.com/c/6a79d41c-5274-83ee-8822-c78db9ded87f
 CURSOR_URL=https://cursor.com/agents/bc-a815a9ed-9dda-47b4-96db-e0d48dad0c95
 CDP_URL=http://127.0.0.1:9222
 STOP_PHRASE=AUTOMATION COMPLETED
-CURSOR_REPLY_TIMEOUT_MS=1800000
-GPT_REPLY_TIMEOUT_MS=600000
 ```
 
 ## Notes
 
-- Keep the Chrome window open while the script runs.
+- Keep that Chrome window open while the script runs.
 - Do not manually type in those two tabs during a loop.
-- If Cursor is still generating, the script waits (default up to 30 minutes per turn).
-- UI selectors can change; if paste/send fails, open an issue with a screenshot of the page.
+- Artifacts are saved under `artifacts/`.

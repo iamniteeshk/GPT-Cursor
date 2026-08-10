@@ -19,10 +19,18 @@ export async function connectBrowser() {
       throw new Error(
         [
           `Could not connect to Chrome at ${config.cdpUrl}.`,
-          "Start Chrome with remote debugging first:",
-          "  Windows: .\\scripts\\start-chrome.ps1",
-          "  macOS/Linux: bash scripts/start-chrome.sh",
-          "Or set CHROME_USER_DATA_DIR in .env to launch with your profile.",
+          "",
+          "This usually means Chrome was already open, so macOS/Windows reused",
+          "that session and ignored --remote-debugging-port",
+          '(you may have seen: "Opening in existing browser session").',
+          "",
+          "Fix:",
+          "  1) Fully quit Chrome (Mac: Cmd+Q, not just close the window)",
+          "  2) bash scripts/start-chrome.sh",
+          "     (script auto-quits Chrome, relaunches, and verifies port 9222)",
+          "  3) Wait until it prints: CDP is ready",
+          "  4) npm run check-login",
+          "",
           `Details: ${error.message}`,
         ].join("\n")
       );
