@@ -1,8 +1,5 @@
 import { motion, useReducedMotion } from 'framer-motion'
-import { lotteryRegions } from '@/data'
-
-const statusLabel = (status: string) =>
-  status === 'live' ? 'Available' : 'Coming Soon'
+import { lotteryRegions, statusLabel } from '@/data'
 
 export function LotteryExplorer() {
   const reduce = useReducedMotion()
@@ -15,7 +12,7 @@ export function LotteryExplorer() {
           <h2 className="section__title">Explore the World of Lotteries</h2>
           <p className="section__lead">
             Discover regions, lotteries, and LottoERY apps across an expanding
-            digital planet — built to grow with every new market.
+            digital universe — designed so every new market plugs in cleanly.
           </p>
         </header>
 
@@ -29,14 +26,13 @@ export function LotteryExplorer() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: '-60px' }}
               transition={{ duration: 0.55, delay: index * 0.08 }}
-              whileHover={reduce ? undefined : { y: -6, rotateX: 2 }}
+              whileHover={reduce ? undefined : { y: -6 }}
             >
               <div className="explorer-card__glow" aria-hidden="true" />
+              <div className="explorer-card__orbit" aria-hidden="true" />
               <div className="explorer-card__top">
                 <span className="explorer-card__region">{region.region}</span>
-                <span
-                  className={`status-pill status-pill--${region.status}`}
-                >
+                <span className={`status-pill status-pill--${region.status}`}>
                   {statusLabel(region.status)}
                 </span>
               </div>

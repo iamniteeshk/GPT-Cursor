@@ -22,9 +22,10 @@ export function Insights() {
           <p className="section__eyebrow">Value Beyond Apps</p>
           <h2 className="section__title">Enhanced Results for You</h2>
           <p className="section__lead">
-            LottoERY products turn lottery data into clarity — analysis,
-            probability insights, statistics, and personalized tools. Never a
-            guarantee of winnings; always a smarter way to explore the numbers.
+            Inside the LottoERY universe, lottery data becomes clarity —
+            analysis, probability insights, statistics, and personalized tools.
+            Never a guarantee of winnings; always a smarter way to explore the
+            numbers.
           </p>
         </header>
 

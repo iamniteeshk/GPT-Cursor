@@ -1,4 +1,4 @@
-export type AppStatus = 'live' | 'coming-soon'
+export type AppStatus = 'available' | 'coming-soon'
 
 export interface LotteryRegion {
   id: string
@@ -11,6 +11,8 @@ export interface LotteryRegion {
   lng: number
   description: string
   accent: string
+  ctaLabel: string
+  ctaHref: string
 }
 
 export interface LottoApp {
@@ -20,8 +22,10 @@ export interface LottoApp {
   region: string
   status: AppStatus
   description: string
+  tagline: string
   platforms: ('ios' | 'android' | 'web')[]
   accent: string
+  accentSecondary: string
   ctaLabel: string
   ctaHref: string
 }
@@ -38,4 +42,8 @@ export interface ExpansionRegion {
   name: string
   status: 'coming-soon'
   blurb: string
+}
+
+export function statusLabel(status: AppStatus): 'Available' | 'Coming Soon' {
+  return status === 'available' ? 'Available' : 'Coming Soon'
 }

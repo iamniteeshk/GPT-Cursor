@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from 'framer-motion'
-import { lotteryRegions } from '@/data'
+import { lotteryRegions, statusLabel } from '@/data'
 
 export function Platform() {
   const reduce = useReducedMotion()
@@ -12,20 +12,20 @@ export function Platform() {
           <h2 className="section__title">One Platform. Many Lottery Experiences.</h2>
           <p className="section__lead">
             LottoERY is a technology ecosystem — not a lottery operator. Regional
-            apps plug into one brand, one design language, and one expanding world.
+            apps orbit one brand, one design language, and one expanding world.
           </p>
         </header>
 
         <motion.div
           className="platform-tree"
-          initial={reduce ? false : { opacity: 0, scale: 0.96 }}
+          initial={reduce ? false : { opacity: 0, scale: 0.97 }}
           whileInView={{ opacity: 1, scale: 1 }}
           viewport={{ once: true, margin: '-80px' }}
           transition={{ duration: 0.7 }}
         >
           <div className="platform-tree__hub">
             <span className="platform-tree__hub-label">LottoERY</span>
-            <span className="platform-tree__hub-sub">Global lottery technology</span>
+            <span className="platform-tree__hub-sub">The Lottery Universe</span>
           </div>
 
           <div className="platform-tree__connectors" aria-hidden="true">
@@ -43,14 +43,14 @@ export function Platform() {
                 initial={reduce ? false : { opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ delay: 0.15 + i * 0.1 }}
+                transition={{ delay: 0.12 + i * 0.08 }}
               >
                 <span className="platform-node__region">{region.region}</span>
                 <strong className="platform-node__product">
                   {region.product ?? 'Coming Soon'}
                 </strong>
                 <span className={`status-pill status-pill--${region.status}`}>
-                  {region.status === 'live' ? 'Live' : 'Coming Soon'}
+                  {statusLabel(region.status)}
                 </span>
               </motion.div>
             ))}

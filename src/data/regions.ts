@@ -7,25 +7,29 @@ export const lotteryRegions: LotteryRegion[] = [
     country: 'India',
     lottery: 'Kerala Lottery',
     product: 'Lucky Keralam',
-    status: 'live',
-    lat: 10.8505,
-    lng: 76.2711,
+    status: 'available',
+    lat: 20.5937,
+    lng: 78.9629,
     description:
-      'Official Kerala Lottery insights, results, and intelligent tools through Lucky Keralam.',
+      'Kerala Lottery results, analysis, lucky picks and intelligent insights — built for India.',
     accent: '#F5C451',
+    ctaLabel: 'Explore App',
+    ctaHref: '#apps',
   },
   {
     id: 'united-states',
     region: 'United States',
     country: 'United States',
-    lottery: 'Powerball & Mega Millions',
+    lottery: 'Powerball + Mega Millions',
     product: 'Mega Ball',
-    status: 'live',
+    status: 'available',
     lat: 39.8283,
     lng: -98.5795,
     description:
-      'US Powerball and Mega Millions analysis, results, and prediction tools via Mega Ball.',
+      'Powerball and Mega Millions tools for results, statistics, probability insights and picks.',
     accent: '#4FC3F7',
+    ctaLabel: 'Explore App',
+    ctaHref: '#apps',
   },
   {
     id: 'europe',
@@ -36,13 +40,16 @@ export const lotteryRegions: LotteryRegion[] = [
     status: 'coming-soon',
     lat: 50.1109,
     lng: 10.0,
-    description: 'European lottery experiences are on the LottoERY roadmap.',
+    description:
+      'More lottery experiences across Europe are joining the LottoERY universe.',
     accent: '#7CFFB2',
+    ctaLabel: 'Notify Me',
+    ctaHref: '#expansion',
   },
 ]
 
-export const getLiveRegions = () =>
-  lotteryRegions.filter((r) => r.status === 'live')
+export const getAvailableRegions = () =>
+  lotteryRegions.filter((r) => r.status === 'available')
 
 export const getComingSoonRegions = () =>
   lotteryRegions.filter((r) => r.status === 'coming-soon')

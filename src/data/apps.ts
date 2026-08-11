@@ -6,11 +6,13 @@ export const lottoApps: LottoApp[] = [
     name: 'Lucky Keralam',
     lottery: 'Kerala Lottery',
     region: 'India',
-    status: 'live',
+    status: 'available',
+    tagline: 'Kerala • India',
     description:
-      'Results, number analysis, historical draws, and intelligent insights for Kerala Lottery — designed for players who want clarity, not guesswork.',
+      'Lottery results, number analysis, lucky picks and lottery insights for Kerala Lottery — clarity without the guesswork.',
     platforms: ['android', 'ios', 'web'],
     accent: '#F5C451',
+    accentSecondary: '#2d8f68',
     ctaLabel: 'Explore Lucky Keralam',
     ctaHref: '#apps',
   },
@@ -19,14 +21,17 @@ export const lottoApps: LottoApp[] = [
     name: 'Mega Ball',
     lottery: 'Powerball + Mega Millions',
     region: 'United States',
-    status: 'live',
+    status: 'available',
+    tagline: 'United States',
     description:
-      'Track Powerball and Mega Millions with live-ready tools for results, statistics, probability insights, and personalized picks.',
+      'Track Powerball and Mega Millions with tools for results, statistics, probability insights and personalized picks.',
     platforms: ['android', 'ios', 'web'],
     accent: '#4FC3F7',
+    accentSecondary: '#1a4f8c',
     ctaLabel: 'Explore Mega Ball',
     ctaHref: '#apps',
   },
 ]
 
-export const getLiveApps = () => lottoApps.filter((a) => a.status === 'live')
+export const getAvailableApps = () =>
+  lottoApps.filter((a) => a.status === 'available')

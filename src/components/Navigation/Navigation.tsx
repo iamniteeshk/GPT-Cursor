@@ -4,9 +4,20 @@ import { brand, navLinks } from '@/data'
 export function Navigation() {
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
+  const [active, setActive] = useState('#home')
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 24)
+    const onScroll = () => {
+      setScrolled(window.scrollY > 16)
+      const sections = navLinks.map((l) => l.href.slice(1))
+      let current = '#home'
+      for (const id of sections) {
+        const el = document.getElementById(id)
+        if (!el) continue
+        if (el.getBoundingClientRect().top <= 120) current = `#${id}`
+      }
+      setActive(current)
+    }
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
@@ -20,7 +31,9 @@ export function Navigation() {
   }, [open])
 
   return (
-    <header className={`nav ${scrolled ? 'nav--scrolled' : ''} ${open ? 'nav--open' : ''}`}>
+    <header
+      className={`nav ${scrolled ? 'nav--scrolled' : ''} ${open ? 'nav--open' : ''}`}
+    >
       <div className="nav__inner">
         <a href="#home" className="nav__logo" aria-label="LottoERY home">
           <span className="nav__logo-mark" aria-hidden="true" />
@@ -29,7 +42,11 @@ export function Navigation() {
 
         <nav className="nav__links" aria-label="Primary">
           {navLinks.map((link) => (
-            <a key={link.href} href={link.href} className="nav__link">
+            <a
+              key={link.href}
+              href={link.href}
+              className={`nav__link ${active === link.href ? 'is-active' : ''}`}
+            >
               {link.label}
             </a>
           ))}
@@ -59,7 +76,7 @@ export function Navigation() {
             <a
               key={link.href}
               href={link.href}
-              className="nav__mobile-link"
+              className={`nav__mobile-link ${active === link.href ? 'is-active' : ''}`}
               onClick={() => setOpen(false)}
             >
               {link.label}

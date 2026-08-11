@@ -11,7 +11,7 @@ export function Expansion() {
           <p className="section__eyebrow">Future Expansion</p>
           <h2 className="section__title">More of the World Is Coming</h2>
           <p className="section__lead">
-            New regions join the LottoERY planet through data — not redesigns.
+            New regions join the Lottery Universe through data — not redesigns.
             Every market below is clearly marked as upcoming.
           </p>
         </header>
