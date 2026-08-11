@@ -200,7 +200,6 @@ function Earth({
   controlsRef,
   mobile,
   colorMap,
-  specularMap,
 }: {
   reducedMotion: boolean
   selectedId: string | null
@@ -208,7 +207,6 @@ function Earth({
   controlsRef: RefObject<OrbitControlsImpl | null>
   mobile: boolean
   colorMap: THREE.Texture
-  specularMap: THREE.Texture
 }) {
   const group = useRef<THREE.Group>(null)
   const radius = 1.38
@@ -237,19 +235,6 @@ function Earth({
         <sphereGeometry args={[radius, segs, segs]} />
         <meshBasicMaterial
           map={colorMap}
-          toneMapped={false}
-        />
-      </mesh>
-      {/* Soft lighting veil for depth without crushing land contrast */}
-      <mesh scale={[1.001, 1.001, 1.001]}>
-        <sphereGeometry args={[radius, segs, segs]} />
-        <meshStandardMaterial
-          roughnessMap={specularMap}
-          color="#0a1a28"
-          transparent
-          opacity={0.18}
-          roughness={0.85}
-          metalness={0.05}
           toneMapped={false}
         />
       </mesh>
@@ -338,7 +323,6 @@ function Scene({
   mobile,
   shortViewport,
   colorMap,
-  specularMap,
 }: {
   reducedMotion: boolean
   selectedId: string | null
@@ -346,7 +330,6 @@ function Scene({
   mobile: boolean
   shortViewport: boolean
   colorMap: THREE.Texture
-  specularMap: THREE.Texture
 }) {
   const controlsRef = useRef<OrbitControlsImpl | null>(null)
   const { gl } = useThree()
@@ -381,7 +364,6 @@ function Scene({
         controlsRef={controlsRef}
         mobile={mobile}
         colorMap={colorMap}
-        specularMap={specularMap}
       />
       <OrbitControls
         ref={controlsRef}
@@ -569,7 +551,6 @@ export function Globe({
               mobile={mobile}
               shortViewport={shortViewport}
               colorMap={maps.color}
-              specularMap={maps.specular}
             />
           </Canvas>
         </GlobeErrorBoundary>
