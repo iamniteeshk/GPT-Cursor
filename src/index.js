@@ -59,18 +59,37 @@ async function assertOrWaitLogin(gptPage, cursorPage) {
   console.log("Login complete for both services.");
 }
 
+async function readGptPrompt(gptPage, cachedText) {
+  // Prefer the reply we just received at end of previous loop — avoids reload races.
+  if (cachedText && cachedText.trim().length > 20) {
+    console.log("Using cached GPT follow-up from previous loop.");
+    return cachedText.trim();
+  }
+
+  await openChatGpt(gptPage);
+  await dismissBlockingUi(gptPage, { label: "ChatGPT" });
+  return getLatestAssistantText(gptPage, { retries: 10 });
+}
+
 async function runLoop(gptPage, cursorPage) {
   let loops = 0;
+  let cachedGptText = "";
 
   while (true) {
     loops += 1;
     console.log(`\n===== LOOP ${loops} =====`);
 
     await gptPage.bringToFront();
-    await openChatGpt(gptPage);
-    await dismissBlockingUi(gptPage, { label: "ChatGPT" });
+    let assistantText;
+    try {
+      assistantText = await readGptPrompt(gptPage, cachedGptText);
+    } catch (error) {
+      console.warn(`GPT read failed (${error.message}). Forcing reload and retrying once…`);
+      await openChatGpt(gptPage, { forceReload: true });
+      assistantText = await getLatestAssistantText(gptPage, { retries: 12 });
+    }
+    cachedGptText = "";
 
-    const assistantText = await getLatestAssistantText(gptPage);
     console.log(`GPT latest message length: ${assistantText.length} chars`);
 
     if (assistantText.includes(config.stopPhrase)) {
@@ -122,7 +141,15 @@ async function runLoop(gptPage, cursorPage) {
     console.log("Sending Cursor output (+ images) back to GPT...");
     await sendToChatGpt(gptPage, { text: followUp, imagePaths: images });
 
-    const nextAssistant = await getLatestAssistantText(gptPage);
+    let nextAssistant;
+    try {
+      nextAssistant = await getLatestAssistantText(gptPage, { retries: 10 });
+    } catch (error) {
+      console.warn(`GPT reply read failed (${error.message}). Reloading and retrying…`);
+      await openChatGpt(gptPage, { forceReload: true });
+      nextAssistant = await getLatestAssistantText(gptPage, { retries: 12 });
+    }
+
     await fs.writeFile(
       artifactPath(`gpt-loop-${loops}-reply.txt`),
       nextAssistant,
@@ -139,6 +166,8 @@ async function runLoop(gptPage, cursorPage) {
       return { loops, completed: true, finalMessage: nextAssistant };
     }
 
+    // Carry forward so next loop doesn't depend on a fragile reload read.
+    cachedGptText = nextAssistant;
     console.log("GPT produced a follow-up prompt. Continuing...");
   }
 }
@@ -158,7 +187,7 @@ async function main() {
   await installDialogHandlers(gptPage);
   await installDialogHandlers(cursorPage);
 
-  await openChatGpt(gptPage);
+  await openChatGpt(gptPage, { forceReload: true });
   await openCursorAgent(cursorPage);
   await dismissBlockingUi(gptPage, { label: "ChatGPT" });
   await dismissBlockingUi(cursorPage, { label: "Cursor" });
