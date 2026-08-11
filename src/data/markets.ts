@@ -70,7 +70,7 @@ export const lotteryMarkets: LotteryMarket[] = [
     description:
       'More lottery experiences across Europe are joining the LottoERY universe.',
     shortBlurb: 'European lottery experiences are on the roadmap.',
-    accent: '#7CFFB2',
+    accent: '#5FD4A0',
     accentSecondary: '#2a6b5a',
     ctaLabel: 'See Roadmap',
     ctaHref: '#expansion',

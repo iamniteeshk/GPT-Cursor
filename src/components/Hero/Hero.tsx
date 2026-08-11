@@ -39,7 +39,8 @@ export function Hero() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45 }}
         >
-          {brand.name}
+          <span className="hero__brand-mark" aria-hidden="true" />
+          <span className="hero__brand-text">{brand.name}</span>
         </motion.p>
 
         <motion.h1

@@ -468,12 +468,28 @@ img {
 .hero__brand {
   margin: 0 0 0.85rem;
   font-family: var(--font-display);
-  font-size: clamp(1.15rem, 2.4vw, 1.45rem);
-  letter-spacing: 0.18em;
+  font-size: clamp(1.25rem, 2.6vw, 1.65rem);
+  letter-spacing: 0.12em;
   font-weight: 780;
   color: var(--gold);
   text-transform: uppercase;
   text-shadow: 0 0 30px rgba(245, 196, 81, 0.28);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.hero__brand-mark {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffe9a8, var(--gold) 55%, #b8862a);
+  box-shadow: 0 0 14px rgba(245, 196, 81, 0.55);
+  flex-shrink: 0;
+}
+
+.hero__brand-text {
+  line-height: 1;
 }
 
 .hero__title {

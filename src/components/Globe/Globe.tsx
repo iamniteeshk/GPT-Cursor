@@ -235,13 +235,21 @@ function Earth({
     <group ref={group}>
       <mesh>
         <sphereGeometry args={[radius, segs, segs]} />
-        <meshStandardMaterial
+        <meshBasicMaterial
           map={colorMap}
+          toneMapped={false}
+        />
+      </mesh>
+      {/* Soft lighting veil for depth without crushing land contrast */}
+      <mesh scale={[1.001, 1.001, 1.001]}>
+        <sphereGeometry args={[radius, segs, segs]} />
+        <meshStandardMaterial
           roughnessMap={specularMap}
-          roughness={0.72}
-          metalness={0.04}
-          emissive="#0a1520"
-          emissiveIntensity={0.22}
+          color="#0a1a28"
+          transparent
+          opacity={0.18}
+          roughness={0.85}
+          metalness={0.05}
           toneMapped={false}
         />
       </mesh>

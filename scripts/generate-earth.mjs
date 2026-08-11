@@ -4,10 +4,9 @@
  */
 import { chromium } from 'playwright'
 import { writeFileSync, mkdirSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, extname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createServer } from 'node:http'
-import { extname } from 'node:path'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, '..')
@@ -46,7 +45,7 @@ await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
 const { port } = server.address()
 
 const browser = await chromium.launch({
-  executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined,
+  executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || '/usr/local/bin/google-chrome',
   headless: true,
   args: ['--no-sandbox', '--disable-dev-shm-usage'],
 })
@@ -94,85 +93,70 @@ const result = await page.evaluate(async () => {
   const sctx = specular.getContext('2d')
 
   const ocean = ctx.createLinearGradient(0, 0, 0, height)
-  ocean.addColorStop(0, '#041018')
-  ocean.addColorStop(0.2, '#0a2438')
-  ocean.addColorStop(0.5, '#0d3550')
-  ocean.addColorStop(0.8, '#0a2438')
-  ocean.addColorStop(1, '#041018')
+  ocean.addColorStop(0, '#07182a')
+  ocean.addColorStop(0.22, '#0c3350')
+  ocean.addColorStop(0.5, '#11486a')
+  ocean.addColorStop(0.78, '#0c3350')
+  ocean.addColorStop(1, '#07182a')
   ctx.fillStyle = ocean
   ctx.fillRect(0, 0, width, height)
 
-  sctx.fillStyle = '#1f1f1f'
+  sctx.fillStyle = '#222222'
   sctx.fillRect(0, 0, width, height)
-
-  const rand = mulberry32(42)
-  for (let i = 0; i < 36; i++) {
-    const x = rand() * width
-    const y = rand() * height
-    const r = 50 + rand() * 160
-    const g = ctx.createRadialGradient(x, y, 0, x, y, r)
-    g.addColorStop(0, 'rgba(40, 110, 150, 0.1)')
-    g.addColorStop(1, 'transparent')
-    ctx.fillStyle = g
-    ctx.beginPath()
-    ctx.arc(x, y, r, 0, Math.PI * 2)
-    ctx.fill()
-  }
 
   const projection = geoEquirectangular()
     .fitSize([width, height], { type: 'Sphere' })
-    .precision(0.15)
+    .precision(0.1)
   const path = geoPath(projection, ctx)
   const spath = geoPath(projection, sctx)
 
   ctx.beginPath()
   path(land)
-  ctx.fillStyle = '#3f4d42'
-  ctx.fill()
-
-  ctx.beginPath()
-  path(land)
-  ctx.fillStyle = 'rgba(72, 88, 74, 0.45)'
+  ctx.fillStyle = '#8fa67a'
   ctx.fill()
 
   const img = ctx.getImageData(0, 0, width, height)
   const data = img.data
-  const rnd = mulberry32(99)
-  for (let i = 0; i < data.length; i += 12) {
-    const r = data[i]
-    const g = data[i + 1]
-    const b = data[i + 2]
-    if (g > r + 8 && g > b + 10 && g > 55) {
-      const n = (rnd() - 0.5) * 22
-      const warm = rnd() > 0.72 ? 6 : 0
-      data[i] = Math.max(0, Math.min(255, r + n + warm))
-      data[i + 1] = Math.max(0, Math.min(255, g + n))
-      data[i + 2] = Math.max(0, Math.min(255, b + n * 0.45 - warm * 0.4))
+  const rnd = mulberry32(77)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4
+      const r = data[i]
+      const g = data[i + 1]
+      const b = data[i + 2]
+      if (g > r + 4 && g > b + 5 && g > 90) {
+        const latBand = Math.sin((y / height) * Math.PI)
+        const n = (rnd() - 0.5) * 14
+        const shade = latBand * 10
+        data[i] = Math.max(0, Math.min(255, r + n + shade * 0.4))
+        data[i + 1] = Math.max(0, Math.min(255, g + n + shade * 0.2))
+        data[i + 2] = Math.max(0, Math.min(255, b + n * 0.3 - shade * 0.15))
+      }
     }
   }
   ctx.putImageData(img, 0, 0)
 
   sctx.beginPath()
   spath(land)
-  sctx.fillStyle = '#d8d8d8'
+  sctx.fillStyle = '#d2d2d2'
   sctx.fill()
 
   ctx.beginPath()
   path(countries)
-  ctx.strokeStyle = 'rgba(210, 222, 214, 0.42)'
-  ctx.lineWidth = Math.max(0.85, width / 2200)
+  ctx.strokeStyle = 'rgba(248, 252, 245, 0.72)'
+  ctx.lineWidth = Math.max(1.25, width / 1500)
   ctx.lineJoin = 'round'
   ctx.stroke()
 
   ctx.beginPath()
   path(land)
-  ctx.strokeStyle = 'rgba(168, 190, 176, 0.55)'
-  ctx.lineWidth = Math.max(1.2, width / 1600)
+  ctx.strokeStyle = 'rgba(236, 245, 230, 0.85)'
+  ctx.lineWidth = Math.max(1.7, width / 1200)
   ctx.stroke()
 
   ctx.beginPath()
   path(geoGraticule10())
-  ctx.strokeStyle = 'rgba(245, 196, 81, 0.07)'
+  ctx.strokeStyle = 'rgba(245, 196, 81, 0.08)'
   ctx.lineWidth = 0.65
   ctx.stroke()
 

@@ -7,8 +7,8 @@ import * as THREE from 'three'
 type LandTopology = Topology<{ land: GeometryCollection }>
 type CountriesTopology = Topology<{ countries: GeometryCollection }>
 
-const COLOR_URL = '/textures/earth-color.png?v=4'
-const SPECULAR_URL = '/textures/earth-specular.png?v=4'
+const COLOR_URL = '/textures/earth-color.png?v=6'
+const SPECULAR_URL = '/textures/earth-specular.png?v=6'
 
 let cachedMaps: {
   color: THREE.Texture
@@ -107,7 +107,7 @@ export async function createEarthMaps(
   // Muted but readable slate-sage land (holds up under tone mapping)
   ctx.beginPath()
   path(land)
-  ctx.fillStyle = '#6d7f62'
+  ctx.fillStyle = '#8fa67a'
   ctx.fill()
 
   // Soft interior variation

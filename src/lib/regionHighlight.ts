@@ -62,11 +62,11 @@ export async function createHighlightCanvas(
     features: matched as Feature<Geometry>[],
   }
 
-  // Soft accent wash
+  // Soft accent wash — keep underlying continents readable
   ctx.beginPath()
   path(fc)
   ctx.fillStyle = accent
-  ctx.globalAlpha = 0.38
+  ctx.globalAlpha = countryIds.length > 5 ? 0.18 : 0.26
   ctx.fill()
   ctx.globalAlpha = 1
 
@@ -74,16 +74,16 @@ export async function createHighlightCanvas(
   ctx.beginPath()
   path(fc)
   ctx.strokeStyle = accent
-  ctx.lineWidth = Math.max(2.2, width / 700)
-  ctx.globalAlpha = 0.55
+  ctx.lineWidth = Math.max(2.4, width / 650)
+  ctx.globalAlpha = countryIds.length > 5 ? 0.55 : 0.72
   ctx.stroke()
 
   // Crisp outer border
   ctx.beginPath()
   path(fc)
   ctx.strokeStyle = '#ffffff'
-  ctx.lineWidth = Math.max(1.1, width / 1400)
-  ctx.globalAlpha = 0.55
+  ctx.lineWidth = Math.max(1.2, width / 1200)
+  ctx.globalAlpha = 0.6
   ctx.stroke()
   ctx.globalAlpha = 1
 
