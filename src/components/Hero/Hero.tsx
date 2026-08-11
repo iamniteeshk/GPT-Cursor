@@ -20,7 +20,7 @@ export function Hero() {
   const scrollOpacity = useTransform(scrollY, [0, 160], [1, 0])
 
   return (
-    <section id="home" className="hero">
+    <section id="home" className="hero" aria-labelledby="hero-brand">
       <div className="hero__atmosphere" aria-hidden="true" />
       <div className="hero__grid" aria-hidden="true" />
       <div
@@ -33,6 +33,7 @@ export function Hero() {
 
       <motion.div className="hero__content" style={{ y: contentY }}>
         <motion.p
+          id="hero-brand"
           className="hero__brand"
           initial={reduce ? false : { opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
@@ -58,7 +59,7 @@ export function Hero() {
           transition={{ duration: 0.5, delay: 0.1 }}
         >
           Explore lottery apps, insights, predictions and tools from around the
-          world.
+          world — analysis and information, never ticket sales.
         </motion.p>
 
         <motion.div

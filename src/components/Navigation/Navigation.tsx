@@ -39,7 +39,6 @@ export function Navigation() {
         <a
           href="#home"
           className="nav__logo"
-          aria-label="LottoERY home"
           onClick={(e) => {
             onNavigateClick(e, '#home')
             setOpen(false)

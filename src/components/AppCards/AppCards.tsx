@@ -51,13 +51,23 @@ export function AppCards() {
                 tabIndex={-1}
               >
                 <div className="app-card__visual" aria-hidden="true">
-                  <div className="app-card__mark">
-                    <span>
-                      {(app.product ?? app.region).slice(0, 2).toUpperCase()}
-                    </span>
+                  <div className="app-card__device">
+                    <div className="app-card__device-notch" />
+                    <div className="app-card__device-screen">
+                      <span className="app-card__device-brand">LottoERY</span>
+                      <strong className="app-card__device-name">
+                        {app.product}
+                      </strong>
+                      <span className="app-card__device-lottery">
+                        {app.lottery}
+                      </span>
+                      <div className="app-card__device-pills">
+                        {app.features.slice(0, 3).map((f) => (
+                          <span key={f.id}>{f.label}</span>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                  <div className="app-card__orbit-ring" />
-                  <div className="app-card__orbit-dot" />
                 </div>
 
                 <div className="app-card__body">

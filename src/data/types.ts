@@ -51,7 +51,7 @@ export interface ExpansionRegion {
 
 export interface InsightArticle {
   id: string
-  category: 'Analysis' | 'Statistics' | 'Guides' | 'Global' | 'Updates'
+  category: 'Analysis' | 'Statistics' | 'Guides' | 'Global' | 'Updates' | 'Editorial' | 'Product'
   title: string
   excerpt: string
   href: string

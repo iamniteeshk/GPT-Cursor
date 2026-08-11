@@ -12,8 +12,9 @@ export function InsightsPreview() {
           <p className="section__eyebrow">Editorial</p>
           <h2 className="section__title">LottoERY Insights</h2>
           <p className="section__lead">
-            Editorial previews that explain how to use lottery information
-            responsibly. A full insights library can plug into these cards later.
+            Editorial articles — distinct from live lottery results. Previews
+            of how LottoERY thinks about statistics, global lotteries, and
+            responsible tools.
           </p>
         </header>
 

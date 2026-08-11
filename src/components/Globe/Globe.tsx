@@ -8,12 +8,12 @@ import {
   type RefObject,
 } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { OrbitControls, Stars, Line } from '@react-three/drei'
+import { OrbitControls, Stars } from '@react-three/drei'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import * as THREE from 'three'
 import { lotteryRegions, getMarketById } from '@/data'
 import type { LotteryRegion } from '@/data'
-import { createEarthMaps } from '@/lib/earthTexture'
+import { loadEarthTextures } from '@/lib/earthTexture'
 import { createHighlightCanvas } from '@/lib/regionHighlight'
 
 export function latLngToVector3(lat: number, lng: number, radius: number) {
@@ -27,17 +27,17 @@ export function latLngToVector3(lat: number, lng: number, radius: number) {
 
 function focusQuaternion(lat: number, lng: number) {
   const point = latLngToVector3(lat, lng, 1).normalize()
-  const target = new THREE.Vector3(0, 0.12, 1).normalize()
+  const target = new THREE.Vector3(0, 0.1, 1).normalize()
   const q = new THREE.Quaternion().setFromUnitVectors(point, target)
   const polish = new THREE.Quaternion().setFromEuler(
-    new THREE.Euler(0.06, 0, -0.03),
+    new THREE.Euler(0.05, 0, -0.025),
   )
   return polish.multiply(q)
 }
 
 function Atmosphere({ radius, mobile }: { radius: number; mobile: boolean }) {
   return (
-    <mesh scale={mobile ? [1.05, 1.05, 1.05] : [1.065, 1.065, 1.065]}>
+    <mesh scale={mobile ? [1.045, 1.045, 1.045] : [1.055, 1.055, 1.055]}>
       <sphereGeometry args={[radius, mobile ? 48 : 64, mobile ? 48 : 64]} />
       <shaderMaterial
         transparent
@@ -55,8 +55,8 @@ function Atmosphere({ radius, mobile }: { radius: number; mobile: boolean }) {
           uniform vec3 glowColor;
           varying vec3 vNormal;
           void main() {
-            float intensity = pow(0.55 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.8);
-            gl_FragColor = vec4(glowColor, clamp(intensity * 0.85, 0.0, 0.75));
+            float intensity = pow(0.58 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.6);
+            gl_FragColor = vec4(glowColor, clamp(intensity * 0.72, 0.0, 0.65));
           }
         `}
       />
@@ -99,38 +99,16 @@ function HighlightLayer({
   if (!map || !countryIds.length) return null
 
   return (
-    <mesh scale={[1.004, 1.004, 1.004]}>
+    <mesh scale={[1.005, 1.005, 1.005]}>
       <sphereGeometry args={[radius, mobile ? 48 : 64, mobile ? 48 : 64]} />
       <meshBasicMaterial
         map={map}
         transparent
         depthWrite={false}
-        opacity={0.95}
+        opacity={1}
         toneMapped={false}
       />
     </mesh>
-  )
-}
-
-function OrbitArc({
-  target,
-  color,
-}: {
-  target: THREE.Vector3
-  color: string
-}) {
-  const points = useMemo(() => {
-    const start = new THREE.Vector3(0, 0, 0)
-    const mid = target
-      .clone()
-      .multiplyScalar(0.55)
-      .add(new THREE.Vector3(0, 0.25, 0))
-    const curve = new THREE.QuadraticBezierCurve3(start, mid, target)
-    return curve.getPoints(24)
-  }, [target])
-
-  return (
-    <Line points={points} color={color} transparent opacity={0.55} lineWidth={1} />
   )
 }
 
@@ -149,7 +127,7 @@ function RegionMarker({
 }) {
   const group = useRef<THREE.Group>(null)
   const pos = useMemo(
-    () => latLngToVector3(region.lat, region.lng, radius + 0.032),
+    () => latLngToVector3(region.lat, region.lng, radius + 0.028),
     [region.lat, region.lng, radius],
   )
   const color = region.accent
@@ -163,8 +141,8 @@ function RegionMarker({
     if (!group.current) return
     const pulse =
       1 +
-      Math.sin(clock.elapsedTime * 2.4 + region.lat) * (selected ? 0.14 : 0.05)
-    group.current.scale.setScalar(selected ? pulse * 1.25 : pulse)
+      Math.sin(clock.elapsedTime * 2.2 + region.lat) * (selected ? 0.12 : 0.04)
+    group.current.scale.setScalar(selected ? pulse * 1.2 : pulse)
   })
 
   const select = (e: { stopPropagation: () => void }) => {
@@ -187,27 +165,27 @@ function RegionMarker({
           if (controlsRef.current) controlsRef.current.enableRotate = true
         }}
       >
-        <sphereGeometry args={[0.11, 16, 16]} />
+        <sphereGeometry args={[0.1, 16, 16]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
       {selected && (
         <mesh raycast={() => null}>
-          <ringGeometry args={[0.07, 0.1, 48]} />
+          <ringGeometry args={[0.065, 0.092, 48]} />
           <meshBasicMaterial
             color={color}
             transparent
-            opacity={0.55}
+            opacity={0.5}
             side={THREE.DoubleSide}
             depthWrite={false}
           />
         </mesh>
       )}
       <mesh raycast={() => null}>
-        <sphereGeometry args={[selected ? 0.046 : 0.034, 16, 16]} />
+        <sphereGeometry args={[selected ? 0.042 : 0.03, 16, 16]} />
         <meshStandardMaterial
           color={color}
           emissive={color}
-          emissiveIntensity={selected ? 2.5 : 1.3}
+          emissiveIntensity={selected ? 2.2 : 1.15}
           toneMapped={false}
         />
       </mesh>
@@ -229,20 +207,13 @@ function Earth({
   onSelect: (id: string) => void
   controlsRef: RefObject<OrbitControlsImpl | null>
   mobile: boolean
-  colorMap: THREE.CanvasTexture
-  specularMap: THREE.CanvasTexture
+  colorMap: THREE.Texture
+  specularMap: THREE.Texture
 }) {
   const group = useRef<THREE.Group>(null)
-  const radius = 1.42
+  const radius = 1.38
   const targetQ = useRef(new THREE.Quaternion())
   const selected = selectedId ? getMarketById(selectedId) : undefined
-  const markerPos = useMemo(
-    () =>
-      selected
-        ? latLngToVector3(selected.lat, selected.lng, radius + 0.02)
-        : null,
-    [selected, radius],
-  )
 
   useEffect(() => {
     if (!selected) return
@@ -267,10 +238,10 @@ function Earth({
         <meshStandardMaterial
           map={colorMap}
           roughnessMap={specularMap}
-          roughness={0.55}
-          metalness={0.12}
-          emissive="#050d16"
-          emissiveIntensity={0.15}
+          roughness={0.62}
+          metalness={0.08}
+          emissive="#040912"
+          emissiveIntensity={0.12}
         />
       </mesh>
       {selected && (
@@ -282,9 +253,6 @@ function Earth({
         />
       )}
       <Atmosphere radius={radius} mobile={mobile} />
-      {selected && markerPos && (
-        <OrbitArc target={markerPos} color={selected.accent} />
-      )}
       {lotteryRegions.map((region) => (
         <RegionMarker
           key={region.id}
@@ -299,6 +267,7 @@ function Earth({
   )
 }
 
+/** Responsive camera so the sphere never kisses container edges. */
 function CameraFraming({
   mobile,
   shortViewport,
@@ -311,21 +280,36 @@ function CameraFraming({
   useEffect(() => {
     const cam = camera as THREE.PerspectiveCamera
     const aspect = size.width / Math.max(size.height, 1)
-    let z = 5.95
+    const sphereRadius = 1.38
+    const atmosphere = mobile ? 1.045 : 1.055
+    const visualR = sphereRadius * atmosphere
+
+    let padding = 1.34
     let fov = 28
-    let y = 0.12
+    let y = 0.08
 
     if (mobile) {
-      z = shortViewport ? 6.15 : 5.9
-      fov = shortViewport ? 33 : 31
-      y = 0.06
-    } else if (shortViewport || size.height <= 800) {
-      z = 6.2
+      padding = shortViewport ? 1.42 : 1.36
+      fov = shortViewport ? 34 : 32
+      y = 0.04
+    } else if (shortViewport || size.height <= 720) {
+      padding = 1.46
+      fov = 26
+      y = 0.05
+    } else if (size.height <= 800) {
+      padding = 1.4
       fov = 27
-    } else if (aspect > 1.7) {
-      z = 5.75
+      y = 0.06
+    } else if (aspect > 1.75) {
+      padding = 1.32
       fov = 28
     }
+
+    const fovRad = (fov * Math.PI) / 180
+    const zFromV = (visualR * padding) / Math.tan(fovRad / 2)
+    const hFov = 2 * Math.atan(Math.tan(fovRad / 2) * aspect)
+    const zFromH = (visualR * padding) / Math.tan(hFov / 2)
+    const z = Math.max(zFromV, zFromH, mobile ? 5.6 : 5.4)
 
     cam.position.set(0, y, z)
     cam.fov = fov
@@ -352,8 +336,8 @@ function Scene({
   onSelect: (id: string) => void
   mobile: boolean
   shortViewport: boolean
-  colorMap: THREE.CanvasTexture
-  specularMap: THREE.CanvasTexture
+  colorMap: THREE.Texture
+  specularMap: THREE.Texture
 }) {
   const controlsRef = useRef<OrbitControlsImpl | null>(null)
   const { gl } = useThree()
@@ -365,19 +349,19 @@ function Scene({
   return (
     <>
       <CameraFraming mobile={mobile} shortViewport={shortViewport} />
-      <ambientLight intensity={0.28} />
-      <directionalLight position={[6, 2.2, 3.5]} intensity={2.05} color="#fff1d6" />
-      <directionalLight position={[-4, -1.5, -2]} intensity={0.45} color="#4aa8d8" />
-      <pointLight position={[2.2, 3.2, -3]} intensity={0.5} color="#F5C451" />
+      <ambientLight intensity={0.32} />
+      <directionalLight position={[5.5, 2.4, 3.2]} intensity={1.85} color="#fff4e0" />
+      <directionalLight position={[-3.5, -1.2, -2]} intensity={0.4} color="#4aa8d8" />
+      <pointLight position={[2, 3, -2.5]} intensity={0.35} color="#F5C451" />
       {!reducedMotion && (
         <Stars
           radius={100}
-          depth={55}
-          count={mobile ? 500 : 1800}
-          factor={mobile ? 2 : 3.2}
+          depth={50}
+          count={mobile ? 320 : 1100}
+          factor={mobile ? 1.8 : 2.8}
           saturation={0}
           fade
-          speed={0.28}
+          speed={0.22}
         />
       )}
       <Earth
@@ -416,7 +400,7 @@ function GlobeFallback({
     <div
       className="globe-fallback"
       role="group"
-      aria-label="LottoERY global lottery map (simplified)"
+      aria-label="Simplified world map of LottoERY lottery regions"
     >
       <div className="globe-fallback__orb">
         <div className="globe-fallback__grid" />
@@ -476,15 +460,15 @@ export function Globe({
   const [mobile, setMobile] = useState(false)
   const [shortViewport, setShortViewport] = useState(false)
   const [maps, setMaps] = useState<{
-    color: THREE.CanvasTexture
-    specular: THREE.CanvasTexture
+    color: THREE.Texture
+    specular: THREE.Texture
   } | null>(null)
   const handleSelect = onSelect ?? (() => undefined)
 
   useEffect(() => {
     const mqMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
     const mqMobile = window.matchMedia('(max-width: 768px)')
-    const mqShort = window.matchMedia('(max-height: 780px)')
+    const mqShort = window.matchMedia('(max-height: 800px)')
     setReducedMotion(mqMotion.matches)
     setMobile(mqMobile.matches)
     setShortViewport(mqShort.matches)
@@ -506,15 +490,9 @@ export function Globe({
     }
 
     let cancelled = false
-    createEarthMaps(mobile ? 2048 : 3072, mobile ? 1024 : 1536)
-      .then(({ color, specular }) => {
-        if (cancelled) return
-        const colorMap = new THREE.CanvasTexture(color)
-        colorMap.colorSpace = THREE.SRGBColorSpace
-        colorMap.anisotropy = mobile ? 4 : 8
-        const specularMap = new THREE.CanvasTexture(specular)
-        specularMap.anisotropy = mobile ? 2 : 4
-        setMaps({ color: colorMap, specular: specularMap })
+    loadEarthTextures(mqMobile.matches)
+      .then((loaded) => {
+        if (!cancelled) setMaps(loaded)
       })
       .catch(() => {
         if (!cancelled) setWebglOk(false)
@@ -526,7 +504,7 @@ export function Globe({
       mqMobile.removeEventListener('change', onMobile)
       mqShort.removeEventListener('change', onShort)
     }
-  }, [mobile])
+  }, [])
 
   const selected = selectedId ? getMarketById(selectedId) : undefined
   const fallback = (
@@ -540,11 +518,11 @@ export function Globe({
   return (
     <div
       className={`globe-root ${className}`}
-      role="application"
+      role="img"
       aria-label={
         selected
-          ? `Interactive Earth globe. Selected region: ${selected.region}. Drag to rotate. Use region list for keyboard access.`
-          : 'Interactive Earth globe showing LottoERY lottery regions. Drag to rotate.'
+          ? `Earth globe focused on ${selected.region}. Drag to rotate. Use region buttons for keyboard access.`
+          : 'Interactive Earth globe with LottoERY lottery regions. Drag to rotate.'
       }
     >
       <p className="sr-only">
@@ -561,8 +539,8 @@ export function Globe({
       ) : (
         <GlobeErrorBoundary fallback={fallback}>
           <Canvas
-            camera={{ position: [0, 0.18, 5.35], fov: 30 }}
-            dpr={mobile ? [1, 1.35] : [1, 1.7]}
+            camera={{ position: [0, 0.08, 5.8], fov: 28 }}
+            dpr={mobile ? [1, 1.35] : [1, 1.65]}
             gl={{
               antialias: true,
               alpha: true,
@@ -571,7 +549,7 @@ export function Globe({
             onCreated={({ gl }) => {
               gl.setClearColor(0x000000, 0)
               gl.toneMapping = THREE.ACESFilmicToneMapping
-              gl.toneMappingExposure = 1.1
+              gl.toneMappingExposure = 1.05
             }}
           >
             <Scene

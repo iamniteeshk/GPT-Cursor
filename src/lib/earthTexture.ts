@@ -2,16 +2,21 @@ import { feature } from 'topojson-client'
 import { geoEquirectangular, geoPath, geoGraticule10 } from 'd3-geo'
 import type { Topology, GeometryCollection } from 'topojson-specification'
 import type { FeatureCollection } from 'geojson'
+import * as THREE from 'three'
 
 type LandTopology = Topology<{ land: GeometryCollection }>
 type CountriesTopology = Topology<{ countries: GeometryCollection }>
 
-let cachedColor: HTMLCanvasElement | null = null
-let cachedSpec: HTMLCanvasElement | null = null
-let cachedKey = ''
+const COLOR_URL = '/textures/earth-color.png'
+const SPECULAR_URL = '/textures/earth-specular.png'
+
+let cachedMaps: {
+  color: THREE.Texture
+  specular: THREE.Texture
+} | null = null
 let cachedPromise: Promise<{
-  color: HTMLCanvasElement
-  specular: HTMLCanvasElement
+  color: THREE.Texture
+  specular: THREE.Texture
 }> | null = null
 
 async function loadTopology(): Promise<{
@@ -47,151 +52,192 @@ function mulberry32(seed: number) {
   }
 }
 
+/**
+ * Muted production Earth map:
+ * deep blue ocean, slate-olive land, crisp borders, subtle terrain.
+ * Active regions are painted separately via highlight overlay.
+ */
 export async function createEarthMaps(
   width = 3072,
   height = 1536,
 ): Promise<{ color: HTMLCanvasElement; specular: HTMLCanvasElement }> {
-  const key = `${width}x${height}`
-  if (cachedColor && cachedSpec && cachedKey === key) {
-    return { color: cachedColor, specular: cachedSpec }
+  const color = document.createElement('canvas')
+  color.width = width
+  color.height = height
+  const ctx = color.getContext('2d')!
+
+  const specular = document.createElement('canvas')
+  specular.width = width
+  specular.height = height
+  const sctx = specular.getContext('2d')!
+
+  const ocean = ctx.createLinearGradient(0, 0, 0, height)
+  ocean.addColorStop(0, '#041018')
+  ocean.addColorStop(0.2, '#0a2438')
+  ocean.addColorStop(0.5, '#0d3550')
+  ocean.addColorStop(0.8, '#0a2438')
+  ocean.addColorStop(1, '#041018')
+  ctx.fillStyle = ocean
+  ctx.fillRect(0, 0, width, height)
+
+  sctx.fillStyle = '#1f1f1f'
+  sctx.fillRect(0, 0, width, height)
+
+  const rand = mulberry32(42)
+  for (let i = 0; i < 36; i++) {
+    const x = rand() * width
+    const y = rand() * height
+    const r = 50 + rand() * 160
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r)
+    g.addColorStop(0, 'rgba(40, 110, 150, 0.1)')
+    g.addColorStop(1, 'transparent')
+    ctx.fillStyle = g
+    ctx.beginPath()
+    ctx.arc(x, y, r, 0, Math.PI * 2)
+    ctx.fill()
   }
-  if (cachedPromise && cachedKey === key) return cachedPromise
 
-  cachedKey = key
+  const { land, countries } = await loadTopology()
+  const projection = geoEquirectangular()
+    .fitSize([width, height], { type: 'Sphere' })
+    .precision(0.15)
+  const path = geoPath(projection, ctx)
+  const spath = geoPath(projection, sctx)
+
+  // Muted slate-olive land — not bright UI green
+  ctx.beginPath()
+  path(land)
+  ctx.fillStyle = '#3f4d42'
+  ctx.fill()
+
+  // Soft interior variation
+  ctx.beginPath()
+  path(land)
+  ctx.fillStyle = 'rgba(72, 88, 74, 0.45)'
+  ctx.fill()
+
+  const img = ctx.getImageData(0, 0, width, height)
+  const data = img.data
+  const rnd = mulberry32(99)
+  for (let i = 0; i < data.length; i += 12) {
+    const r = data[i]
+    const g = data[i + 1]
+    const b = data[i + 2]
+    // Land pixels are greener/olive than ocean
+    if (g > r + 8 && g > b + 10 && g > 55) {
+      const n = (rnd() - 0.5) * 22
+      const warm = rnd() > 0.72 ? 6 : 0
+      data[i] = Math.max(0, Math.min(255, r + n + warm))
+      data[i + 1] = Math.max(0, Math.min(255, g + n))
+      data[i + 2] = Math.max(0, Math.min(255, b + n * 0.45 - warm * 0.4))
+    }
+  }
+  ctx.putImageData(img, 0, 0)
+
+  sctx.beginPath()
+  spath(land)
+  sctx.fillStyle = '#d8d8d8'
+  sctx.fill()
+
+  // Country borders — readable silhouette without dominating
+  ctx.beginPath()
+  path(countries)
+  ctx.strokeStyle = 'rgba(210, 222, 214, 0.42)'
+  ctx.lineWidth = Math.max(0.85, width / 2200)
+  ctx.lineJoin = 'round'
+  ctx.stroke()
+
+  // Coastline rim for continent recognition
+  ctx.beginPath()
+  path(land)
+  ctx.strokeStyle = 'rgba(168, 190, 176, 0.55)'
+  ctx.lineWidth = Math.max(1.2, width / 1600)
+  ctx.stroke()
+
+  // Secondary latitude/longitude grid
+  ctx.beginPath()
+  path(geoGraticule10())
+  ctx.strokeStyle = 'rgba(245, 196, 81, 0.07)'
+  ctx.lineWidth = 0.65
+  ctx.stroke()
+
+  return { color, specular }
+}
+
+function prepareTexture(
+  tex: THREE.Texture,
+  {
+    srgb,
+    anisotropy,
+  }: {
+    srgb?: boolean
+    anisotropy: number
+  },
+) {
+  if (srgb) tex.colorSpace = THREE.SRGBColorSpace
+  tex.anisotropy = anisotropy
+  tex.wrapS = THREE.ClampToEdgeWrapping
+  tex.wrapT = THREE.ClampToEdgeWrapping
+  tex.minFilter = THREE.LinearMipmapLinearFilter
+  tex.magFilter = THREE.LinearFilter
+  tex.generateMipmaps = true
+  tex.needsUpdate = true
+  return tex
+}
+
+/**
+ * Prefer pre-baked local world textures for instant recognizable Earth.
+ * Falls back to runtime TopoJSON canvas generation if assets fail.
+ */
+export async function loadEarthTextures(
+  mobile = false,
+): Promise<{ color: THREE.Texture; specular: THREE.Texture }> {
+  if (cachedMaps) return cachedMaps
+  if (cachedPromise) return cachedPromise
+
   cachedPromise = (async () => {
-    const color = document.createElement('canvas')
-    color.width = width
-    color.height = height
-    const ctx = color.getContext('2d')!
+    const loader = new THREE.TextureLoader()
+    const anisotropy = mobile ? 4 : 8
 
-    const specular = document.createElement('canvas')
-    specular.width = width
-    specular.height = height
-    const sctx = specular.getContext('2d')!
-
-    // Deep ocean base
-    const ocean = ctx.createLinearGradient(0, 0, 0, height)
-    ocean.addColorStop(0, '#071c2e')
-    ocean.addColorStop(0.22, '#0a3350')
-    ocean.addColorStop(0.5, '#0d4564')
-    ocean.addColorStop(0.78, '#0a3350')
-    ocean.addColorStop(1, '#071c2e')
-    ctx.fillStyle = ocean
-    ctx.fillRect(0, 0, width, height)
-
-    // Specular/roughness map: dark = shiny ocean, light = matte land
-    sctx.fillStyle = '#2a2a2a'
-    sctx.fillRect(0, 0, width, height)
-
-    const rand = mulberry32(42)
-    for (let i = 0; i < 48; i++) {
-      const x = rand() * width
-      const y = rand() * height
-      const r = 60 + rand() * 180
-      const g = ctx.createRadialGradient(x, y, 0, x, y, r)
-      g.addColorStop(0, 'rgba(48, 130, 170, 0.11)')
-      g.addColorStop(1, 'transparent')
-      ctx.fillStyle = g
-      ctx.beginPath()
-      ctx.arc(x, y, r, 0, Math.PI * 2)
-      ctx.fill()
+    try {
+      const [color, specular] = await Promise.all([
+        loader.loadAsync(COLOR_URL),
+        loader.loadAsync(SPECULAR_URL),
+      ])
+      prepareTexture(color, { srgb: true, anisotropy })
+      prepareTexture(specular, { anisotropy: mobile ? 2 : 4 })
+      cachedMaps = { color, specular }
+      return cachedMaps
+    } catch {
+      const { color, specular } = await createEarthMaps(
+        mobile ? 2048 : 3072,
+        mobile ? 1024 : 1536,
+      )
+      const colorMap = prepareTexture(new THREE.CanvasTexture(color), {
+        srgb: true,
+        anisotropy,
+      })
+      const specularMap = prepareTexture(new THREE.CanvasTexture(specular), {
+        anisotropy: mobile ? 2 : 4,
+      })
+      cachedMaps = { color: colorMap, specular: specularMap }
+      return cachedMaps
     }
-
-    const { land, countries } = await loadTopology()
-    const projection = geoEquirectangular()
-      .fitSize([width, height], { type: 'Sphere' })
-      .precision(0.2)
-    const path = geoPath(projection, ctx)
-    const spath = geoPath(projection, sctx)
-
-    // Land base — readable teal-forest against deep ocean
-    ctx.beginPath()
-    path(land)
-    ctx.fillStyle = '#247a5c'
-    ctx.fill()
-
-    // Interior tonal variation
-    ctx.beginPath()
-    path(land)
-    ctx.fillStyle = 'rgba(90, 160, 120, 0.32)'
-    ctx.fill()
-
-    // Soft terrain noise
-    const img = ctx.getImageData(0, 0, width, height)
-    const data = img.data
-    const rnd = mulberry32(99)
-    for (let i = 0; i < data.length; i += 16) {
-      // Sample sparse pixels for subtle grain on darker (land-ish) greens
-      const g = data[i + 1]
-      const b = data[i + 2]
-      if (g > 70 && b < 120) {
-        const n = (rnd() - 0.5) * 18
-        data[i] = Math.max(0, Math.min(255, data[i] + n))
-        data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + n))
-        data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + n * 0.5))
-      }
-    }
-    ctx.putImageData(img, 0, 0)
-
-    // Specular: land is matte (high roughness)
-    sctx.beginPath()
-    spath(land)
-    sctx.fillStyle = '#e8e8e8'
-    sctx.fill()
-
-    // Country borders
-    ctx.beginPath()
-    path(countries)
-    ctx.strokeStyle = 'rgba(220, 245, 230, 0.5)'
-    ctx.lineWidth = Math.max(0.9, width / 2000)
-    ctx.lineJoin = 'round'
-    ctx.stroke()
-
-    // Coastline rim
-    ctx.beginPath()
-    path(land)
-    ctx.strokeStyle = 'rgba(170, 235, 200, 0.55)'
-    ctx.lineWidth = Math.max(1.4, width / 1400)
-    ctx.stroke()
-
-    // Subtle graticule
-    ctx.beginPath()
-    path(geoGraticule10())
-    ctx.strokeStyle = 'rgba(245, 196, 81, 0.09)'
-    ctx.lineWidth = 0.7
-    ctx.stroke()
-
-    // City lights along populated latitudes
-    ctx.fillStyle = 'rgba(255, 220, 150, 0.32)'
-    for (let i = 0; i < 320; i++) {
-      const x = rand() * width
-      const y = height * 0.18 + rand() * height * 0.55
-      ctx.beginPath()
-      ctx.arc(x, y, rand() * 1.5, 0, Math.PI * 2)
-      ctx.fill()
-    }
-
-    cachedColor = color
-    cachedSpec = specular
-    return { color, specular }
   })().catch((err) => {
     cachedPromise = null
-    cachedKey = ''
     throw err
   })
 
   return cachedPromise
 }
 
-/** @deprecated use createEarthMaps */
+/** @deprecated use createEarthMaps / loadEarthTextures */
 export async function createEarthCanvas(width = 3072, height = 1536) {
   const maps = await createEarthMaps(width, height)
   return maps.color
 }
 
 export function clearEarthTextureCache() {
-  cachedColor = null
-  cachedSpec = null
+  cachedMaps = null
   cachedPromise = null
-  cachedKey = ''
 }

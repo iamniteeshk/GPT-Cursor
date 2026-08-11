@@ -122,36 +122,28 @@ export const howSteps: HowStep[] = [
 
 export const insightArticles: InsightArticle[] = [
   {
-    id: 'reading-results',
-    category: 'Guides',
-    title: 'How to read lottery results with clearer context',
-    excerpt:
-      'A practical walkthrough of draw outcomes, draw cadence, and what “results” should (and shouldn’t) tell you.',
-    href: '#insights-preview',
-  },
-  {
-    id: 'number-patterns',
+    id: 'lottery-statistics',
     category: 'Analysis',
-    title: 'Understanding number patterns without myths',
+    title: 'How Lottery Statistics Can Help You Understand Draw History',
     excerpt:
-      'Frequency, gaps, and distribution — useful lenses for curiosity, not promises about the next draw.',
+      'Frequency, gaps, and distribution are tools for reading historical draws — useful context, not a forecast of the next result.',
     href: '#insights-preview',
   },
   {
     id: 'global-lotteries',
-    category: 'Global',
-    title: 'Why lottery experiences differ around the world',
+    category: 'Editorial',
+    title: 'Inside the World of Global Lotteries',
     excerpt:
-      'Formats, calendars, and tools vary by region — LottoERY is built to adapt without becoming an operator.',
+      'Formats, calendars, and player tools differ by region. A look at how lottery experiences vary around the world.',
     href: '#insights-preview',
   },
   {
-    id: 'app-updates',
-    category: 'Updates',
-    title: 'What’s next for Lucky Keralam and Mega Ball',
+    id: 'lottoery-data-tools',
+    category: 'Product',
+    title: 'How LottoERY Uses Data to Build Better Lottery Tools',
     excerpt:
-      'Product direction for India’s Kerala Lottery app and the US Powerball + Mega Millions experience.',
-    href: '#apps',
+      'Insights, analysis, and predictions in LottoERY apps are designed as informational tools — never as guarantees of winnings.',
+    href: '#insights-preview',
   },
 ]
 

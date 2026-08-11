@@ -26,8 +26,8 @@ function countryId(f: Feature): number | null {
 }
 
 /**
- * Builds an equirectangular highlight overlay for selected ISO country ids.
- * Transparent elsewhere; soft gold/accent fill on matched countries.
+ * Equirectangular highlight for active lottery region only.
+ * Transparent elsewhere — world map stays muted; selection pops in accent.
  */
 export async function createHighlightCanvas(
   countryIds: number[],
@@ -54,7 +54,7 @@ export async function createHighlightCanvas(
 
   const projection = geoEquirectangular()
     .fitSize([width, height], { type: 'Sphere' })
-    .precision(0.3)
+    .precision(0.25)
   const path = geoPath(projection, ctx)
 
   const fc: FeatureCollection = {
@@ -62,18 +62,28 @@ export async function createHighlightCanvas(
     features: matched as Feature<Geometry>[],
   }
 
+  // Soft accent wash
   ctx.beginPath()
   path(fc)
   ctx.fillStyle = accent
-  ctx.globalAlpha = 0.42
+  ctx.globalAlpha = 0.38
   ctx.fill()
   ctx.globalAlpha = 1
 
+  // Inner glow rim
   ctx.beginPath()
   path(fc)
   ctx.strokeStyle = accent
-  ctx.lineWidth = 2
-  ctx.globalAlpha = 0.85
+  ctx.lineWidth = Math.max(2.2, width / 700)
+  ctx.globalAlpha = 0.55
+  ctx.stroke()
+
+  // Crisp outer border
+  ctx.beginPath()
+  path(fc)
+  ctx.strokeStyle = '#ffffff'
+  ctx.lineWidth = Math.max(1.1, width / 1400)
+  ctx.globalAlpha = 0.55
   ctx.stroke()
   ctx.globalAlpha = 1
 
