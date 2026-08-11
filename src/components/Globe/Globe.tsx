@@ -278,24 +278,24 @@ function CameraFraming({
     const atmosphere = mobile ? 1.045 : 1.055
     const visualR = sphereRadius * atmosphere
 
-    let padding = 1.34
+    let padding = 1.26
     let fov = 28
     let y = 0.08
 
     if (mobile) {
-      padding = shortViewport ? 1.42 : 1.36
+      padding = shortViewport ? 1.34 : 1.28
       fov = shortViewport ? 34 : 32
       y = 0.04
     } else if (shortViewport || size.height <= 720) {
-      padding = 1.46
+      padding = 1.36
       fov = 26
       y = 0.05
     } else if (size.height <= 800) {
-      padding = 1.4
+      padding = 1.3
       fov = 27
       y = 0.06
     } else if (aspect > 1.75) {
-      padding = 1.32
+      padding = 1.24
       fov = 28
     }
 
@@ -512,15 +512,10 @@ export function Globe({
       role="img"
       aria-label={
         selected
-          ? `Earth globe focused on ${selected.region}. Drag to rotate. Use region buttons for keyboard access.`
-          : 'Interactive Earth globe with LottoERY lottery regions. Drag to rotate.'
+          ? `Earth globe focused on ${selected.region}. Drag to rotate. Lottery regions: India (Lucky Keralam), United States (Mega Ball), Europe (Coming Soon). Use the region buttons next to the globe for keyboard access.`
+          : 'Interactive Earth globe with LottoERY lottery regions. Drag to rotate. Use the region buttons next to the globe for keyboard access.'
       }
     >
-      <p className="sr-only">
-        Lottery regions: India (Lucky Keralam), United States (Mega Ball), Europe
-        (Coming Soon). Use the region buttons next to the globe to select a
-        market.
-      </p>
       {!maps ? (
         <div className="globe-fallback" aria-hidden="true">
           <div className="globe-fallback__orb globe-fallback__orb--loading">

@@ -1,1 +1,1 @@
-export { Hero } from './Hero'
+export { HomeStage, HomeStage as default } from './HomeStage'

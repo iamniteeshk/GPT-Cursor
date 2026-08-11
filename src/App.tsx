@@ -1,5 +1,5 @@
 import { Navigation } from '@/components/Navigation'
-import { Hero } from '@/components/Hero'
+import { HomeStage } from '@/components/Hero'
 import { LotteryExplorer } from '@/components/LotteryExplorer'
 import { AppCards } from '@/components/AppCards'
 import { HowItWorks } from '@/components/HowItWorks'
@@ -18,7 +18,7 @@ export default function App() {
       </a>
       <Navigation />
       <main id="main">
-        <Hero />
+        <HomeStage />
         <LotteryExplorer />
         <AppCards />
         <HowItWorks />

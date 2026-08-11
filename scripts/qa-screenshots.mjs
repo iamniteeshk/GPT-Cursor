@@ -68,7 +68,7 @@ for (const vp of viewports) {
   await shoot(page, `p4-${vp.name}-usa.png`)
 
   // Click India
-  const india = page.locator('.hero__region-btn', { hasText: 'India' }).first()
+  const india = page.locator('.home-stage__region-btn', { hasText: 'India' }).first()
   if (await india.count()) {
     await india.click()
     await page.waitForTimeout(1600)
@@ -76,7 +76,7 @@ for (const vp of viewports) {
   }
 
   // Europe
-  const europe = page.locator('.hero__region-btn', { hasText: 'Europe' }).first()
+  const europe = page.locator('.home-stage__region-btn', { hasText: 'Europe' }).first()
   if (await europe.count()) {
     await europe.click()
     await page.waitForTimeout(1600)
@@ -104,7 +104,7 @@ for (const vp of viewports) {
   await page.evaluate(() => window.scrollTo(0, 0))
   await page.waitForTimeout(400)
   const metrics = await page.evaluate(() => {
-    const stage = document.querySelector('.hero__globe-stage')
+    const stage = document.querySelector('.home-stage__globe-stage')
     const canvas = document.querySelector('.globe-root canvas')
     if (!stage || !canvas) return null
     const s = stage.getBoundingClientRect()

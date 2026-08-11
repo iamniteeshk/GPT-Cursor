@@ -1,5 +1,6 @@
 /**
  * Regenerates local Earth textures via headless Chromium + TopoJSON.
+ * Dark muted land, deep ocean, subtle borders — recognizable continents.
  * Run: node scripts/generate-earth.mjs
  */
 import { chromium } from 'playwright'
@@ -17,18 +18,11 @@ mkdirSync(outDir, { recursive: true })
 const mime = {
   '.json': 'application/json',
   '.png': 'image/png',
-  '.svg': 'image/svg+xml',
-  '.js': 'text/javascript',
-  '.mjs': 'text/javascript',
-  '.css': 'text/css',
-  '.html': 'text/html',
 }
 
 const server = createServer((req, res) => {
   const url = new URL(req.url || '/', 'http://127.0.0.1')
-  let path = url.pathname
-  if (path === '/') path = '/index.html'
-  const filePath = join(publicDir, decodeURIComponent(path))
+  const filePath = join(publicDir, decodeURIComponent(url.pathname))
   try {
     const data = readFileSync(filePath)
     res.writeHead(200, {
@@ -45,7 +39,9 @@ await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
 const { port } = server.address()
 
 const browser = await chromium.launch({
-  executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || '/usr/local/bin/google-chrome',
+  executablePath:
+    process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ||
+    '/usr/local/bin/google-chrome',
   headless: true,
   args: ['--no-sandbox', '--disable-dev-shm-usage'],
 })
@@ -87,93 +83,96 @@ const result = await page.evaluate(async () => {
   color.height = height
   const ctx = color.getContext('2d')
 
-  const specular = document.createElement('canvas')
-  specular.width = width
-  specular.height = height
-  const sctx = specular.getContext('2d')
-
+  // Deep navy ocean with equatorial lift
   const ocean = ctx.createLinearGradient(0, 0, 0, height)
-  ocean.addColorStop(0, '#07182a')
-  ocean.addColorStop(0.22, '#0c3350')
-  ocean.addColorStop(0.5, '#11486a')
-  ocean.addColorStop(0.78, '#0c3350')
-  ocean.addColorStop(1, '#07182a')
+  ocean.addColorStop(0, '#061525')
+  ocean.addColorStop(0.22, '#0a2e48')
+  ocean.addColorStop(0.5, '#0e4060')
+  ocean.addColorStop(0.78, '#0a2e48')
+  ocean.addColorStop(1, '#061525')
   ctx.fillStyle = ocean
   ctx.fillRect(0, 0, width, height)
 
-  sctx.fillStyle = '#222222'
-  sctx.fillRect(0, 0, width, height)
+  // Soft ocean depth patches
+  const rand = mulberry32(42)
+  for (let i = 0; i < 40; i++) {
+    const x = rand() * width
+    const y = rand() * height
+    const r = 50 + rand() * 170
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r)
+    g.addColorStop(0, 'rgba(45, 120, 160, 0.1)')
+    g.addColorStop(1, 'transparent')
+    ctx.fillStyle = g
+    ctx.beginPath()
+    ctx.arc(x, y, r, 0, Math.PI * 2)
+    ctx.fill()
+  }
 
   const projection = geoEquirectangular()
     .fitSize([width, height], { type: 'Sphere' })
     .precision(0.1)
   const path = geoPath(projection, ctx)
-  const spath = geoPath(projection, sctx)
 
+  // Dark muted land — not bright UI green
   ctx.beginPath()
   path(land)
-  ctx.fillStyle = '#8fa67a'
+  ctx.fillStyle = '#4d5c4a'
   ctx.fill()
 
+  // Soft terrain variation (latitude bands + grain)
   const img = ctx.getImageData(0, 0, width, height)
   const data = img.data
   const rnd = mulberry32(77)
   for (let y = 0; y < height; y++) {
+    const latBand = Math.sin((y / height) * Math.PI)
     for (let x = 0; x < width; x++) {
       const i = (y * width + x) * 4
       const r = data[i]
       const g = data[i + 1]
       const b = data[i + 2]
-      if (g > r + 4 && g > b + 5 && g > 90) {
-        const latBand = Math.sin((y / height) * Math.PI)
-        const n = (rnd() - 0.5) * 14
-        const shade = latBand * 10
-        data[i] = Math.max(0, Math.min(255, r + n + shade * 0.4))
-        data[i + 1] = Math.max(0, Math.min(255, g + n + shade * 0.2))
-        data[i + 2] = Math.max(0, Math.min(255, b + n * 0.3 - shade * 0.15))
+      // Land: greenish olive against blue ocean
+      if (g > r + 4 && g > b + 6 && g > 55) {
+        const n = (rnd() - 0.5) * 16
+        const warm = rnd() > 0.78 ? 7 : 0
+        const arid = latBand < 0.35 || latBand > 0.78 ? -6 : latBand * 8
+        data[i] = Math.max(0, Math.min(255, r + n + warm + arid * 0.35))
+        data[i + 1] = Math.max(0, Math.min(255, g + n + arid * 0.15))
+        data[i + 2] = Math.max(0, Math.min(255, b + n * 0.35 - warm * 0.4))
       }
     }
   }
   ctx.putImageData(img, 0, 0)
 
-  sctx.beginPath()
-  spath(land)
-  sctx.fillStyle = '#d2d2d2'
-  sctx.fill()
-
+  // Subtle country borders
   ctx.beginPath()
   path(countries)
-  ctx.strokeStyle = 'rgba(248, 252, 245, 0.72)'
-  ctx.lineWidth = Math.max(1.25, width / 1500)
+  ctx.strokeStyle = 'rgba(170, 190, 175, 0.38)'
+  ctx.lineWidth = Math.max(0.9, width / 2000)
   ctx.lineJoin = 'round'
   ctx.stroke()
 
+  // Coastline silhouette — key for continent recognition
   ctx.beginPath()
   path(land)
-  ctx.strokeStyle = 'rgba(236, 245, 230, 0.85)'
-  ctx.lineWidth = Math.max(1.7, width / 1200)
+  ctx.strokeStyle = 'rgba(190, 210, 195, 0.55)'
+  ctx.lineWidth = Math.max(1.35, width / 1500)
   ctx.stroke()
 
+  // Secondary lat/lng grid
   ctx.beginPath()
   path(geoGraticule10())
-  ctx.strokeStyle = 'rgba(245, 196, 81, 0.08)'
-  ctx.lineWidth = 0.65
+  ctx.strokeStyle = 'rgba(245, 196, 81, 0.06)'
+  ctx.lineWidth = 0.6
   ctx.stroke()
 
-  return {
-    color: color.toDataURL('image/png'),
-    specular: specular.toDataURL('image/png'),
-  }
+  return { color: color.toDataURL('image/png') }
 })
 
-function writeDataUrl(dataUrl, filePath) {
-  const b64 = dataUrl.split(',')[1]
-  writeFileSync(filePath, Buffer.from(b64, 'base64'))
-}
-
-writeDataUrl(result.color, join(outDir, 'earth-color.png'))
-writeDataUrl(result.specular, join(outDir, 'earth-specular.png'))
+writeFileSync(
+  join(outDir, 'earth-color.png'),
+  Buffer.from(result.color.split(',')[1], 'base64'),
+)
 
 await browser.close()
 server.close()
-console.log('Wrote textures to public/textures/')
+console.log('Wrote public/textures/earth-color.png')

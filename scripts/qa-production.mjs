@@ -93,9 +93,9 @@ async function checkPage(page, name) {
   await page.waitForTimeout(2000)
 
   for (const region of ['India', 'United States', 'Europe']) {
-    await page.locator('.hero__region-btn', { hasText: region }).first().click()
+    await page.locator('.home-stage__region-btn', { hasText: region }).first().click()
     await page.waitForTimeout(1600)
-    const panel = await page.locator('.hero__panel').innerText()
+    const panel = await page.locator('.home-stage__panel').innerText()
     console.log('region', region, panel.split('\n').slice(0, 4).join(' | '))
   }
 

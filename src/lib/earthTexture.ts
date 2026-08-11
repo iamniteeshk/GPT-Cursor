@@ -7,7 +7,7 @@ import * as THREE from 'three'
 type LandTopology = Topology<{ land: GeometryCollection }>
 type CountriesTopology = Topology<{ countries: GeometryCollection }>
 
-const COLOR_URL = '/textures/earth-color.png?v=7'
+const COLOR_URL = '/textures/earth-color.jpg?v=9'
 
 let cachedMap: THREE.Texture | null = null
 let cachedPromise: Promise<THREE.Texture> | null = null
@@ -97,7 +97,7 @@ export async function createEarthMaps(
 
   ctx.beginPath()
   path(land)
-  ctx.fillStyle = '#a8bc8e'
+  ctx.fillStyle = '#4d5c4a'
   ctx.fill()
 
   ctx.beginPath()

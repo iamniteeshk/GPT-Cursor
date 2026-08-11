@@ -7,7 +7,7 @@ const Globe = lazy(() =>
   import('@/components/Globe').then((m) => ({ default: m.Globe })),
 )
 
-export function Hero() {
+export function HomeStage() {
   const [selectedId, setSelectedId] = useState<string>(
     lotteryRegions[1]?.id ?? lotteryRegions[0]?.id ?? 'united-states',
   )
@@ -20,31 +20,31 @@ export function Hero() {
   const scrollOpacity = useTransform(scrollY, [0, 160], [1, 0])
 
   return (
-    <section id="home" className="hero" aria-labelledby="hero-brand">
-      <div className="hero__atmosphere" aria-hidden="true" />
-      <div className="hero__grid" aria-hidden="true" />
+    <section id="home" className="home-stage" aria-labelledby="home-heading">
+      <div className="home-stage__atmosphere" aria-hidden="true" />
+      <div className="home-stage__grid" aria-hidden="true" />
       <div
-        className="hero__orb-glow"
+        className="home-stage__orb-glow"
         style={
           { '--accent': selected?.accent ?? '#4FC3F7' } as React.CSSProperties
         }
         aria-hidden="true"
       />
 
-      <motion.div className="hero__content" style={{ y: contentY }}>
+      <motion.div className="home-stage__content" style={{ y: contentY }}>
         <motion.p
-          id="hero-brand"
-          className="hero__brand"
+          className="home-stage__brand"
           initial={reduce ? false : { opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45 }}
         >
-          <span className="hero__brand-mark" aria-hidden="true" />
-          <span className="hero__brand-text">{brand.name}</span>
+          <span className="home-stage__brand-mark" aria-hidden="true" />
+          <span className="home-stage__brand-text">{brand.name}</span>
         </motion.p>
 
         <motion.h1
-          className="hero__title"
+          id="home-heading"
+          className="home-stage__title"
           initial={reduce ? false : { opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.55, delay: 0.05 }}
@@ -54,7 +54,7 @@ export function Hero() {
         </motion.h1>
 
         <motion.p
-          className="hero__lead"
+          className="home-stage__lead"
           initial={reduce ? false : { opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.1 }}
@@ -64,7 +64,7 @@ export function Hero() {
         </motion.p>
 
         <motion.div
-          className="hero__actions"
+          className="home-stage__actions"
           initial={reduce ? false : { opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.14 }}
@@ -87,13 +87,13 @@ export function Hero() {
       </motion.div>
 
       <motion.div
-        className="hero__globe-wrap"
+        className="home-stage__globe-wrap"
         style={{ y: globeY }}
         initial={reduce ? false : { opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.8, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
       >
-        <div className="hero__globe-stage">
+        <div className="home-stage__globe-stage">
           <Suspense
             fallback={
               <div className="globe-fallback" aria-hidden="true">
@@ -108,7 +108,7 @@ export function Hero() {
         </div>
 
         <div
-          className="hero__region-rail"
+          className="home-stage__region-rail"
           role="listbox"
           aria-label="Lottery regions"
         >
@@ -118,12 +118,12 @@ export function Hero() {
               type="button"
               role="option"
               aria-selected={selectedId === region.id}
-              className={`hero__region-btn ${selectedId === region.id ? 'is-active' : ''}`}
+              className={`home-stage__region-btn ${selectedId === region.id ? 'is-active' : ''}`}
               style={{ '--accent': region.accent } as React.CSSProperties}
               onClick={() => setSelectedId(region.id)}
             >
-              <span className="hero__region-dot" aria-hidden="true" />
-              <span className="hero__region-copy">
+              <span className="home-stage__region-dot" aria-hidden="true" />
+              <span className="home-stage__region-copy">
                 <strong>{region.region}</strong>
                 <small>
                   {region.status === 'available'
@@ -138,7 +138,7 @@ export function Hero() {
 
       {selected && (
         <motion.aside
-          className="hero__panel"
+          className="home-stage__panel"
           key={selected.id}
           initial={reduce ? false : { opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -146,21 +146,21 @@ export function Hero() {
           style={{ '--accent': selected.accent } as React.CSSProperties}
           aria-live="polite"
         >
-          <div className="hero__panel-top">
-            <p className="hero__panel-region">{selected.region}</p>
+          <div className="home-stage__panel-top">
+            <p className="home-stage__panel-region">{selected.region}</p>
             <span className={`status-pill status-pill--${selected.status}`}>
               {statusLabel(selected.status)}
             </span>
           </div>
-          <h2 className="hero__panel-product">
+          <h2 className="home-stage__panel-product">
             {selected.product ?? 'More lottery experiences'}
           </h2>
-          <p className="hero__panel-lottery">{selected.lottery}</p>
-          <p className="hero__panel-desc">{selected.description}</p>
+          <p className="home-stage__panel-lottery">{selected.lottery}</p>
+          <p className="home-stage__panel-desc">{selected.description}</p>
           {selected.status === 'available' ? (
             <a
               href={selected.ctaHref}
-              className="hero__panel-cta"
+              className="home-stage__panel-cta"
               onClick={(e) => onNavigateClick(e, selected.ctaHref)}
             >
               Explore App <span aria-hidden="true">→</span>
@@ -168,7 +168,7 @@ export function Hero() {
           ) : (
             <a
               href="#expansion"
-              className="hero__panel-cta"
+              className="home-stage__panel-cta"
               onClick={(e) => onNavigateClick(e, '#expansion')}
             >
               See Roadmap <span aria-hidden="true">→</span>
@@ -179,13 +179,13 @@ export function Hero() {
 
       <motion.a
         href="#lotteries"
-        className="hero__scroll"
+        className="home-stage__scroll"
         style={{ opacity: scrollOpacity }}
         aria-label="Explore the world of lotteries"
         onClick={(e) => onNavigateClick(e, '#lotteries')}
       >
         <span>Explore the world</span>
-        <span className="hero__scroll-arrow" aria-hidden="true">
+        <span className="home-stage__scroll-arrow" aria-hidden="true">
           ↓
         </span>
       </motion.a>
@@ -193,4 +193,4 @@ export function Hero() {
   )
 }
 
-export default Hero
+export default HomeStage
