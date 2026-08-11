@@ -409,7 +409,7 @@ function GlobeFallback({
               } as React.CSSProperties
             }
             onClick={() => onSelect(region.id)}
-            aria-label={`${region.region}: ${region.lottery}. ${region.status === 'available' ? 'Available' : 'Coming soon'}`}
+            aria-label={`${region.region}: ${region.lottery}. ${region.status === 'available' ? 'Available' : 'Coming Soon'}`}
             aria-pressed={selectedId === region.id}
           />
         ))}
@@ -453,7 +453,6 @@ export function Globe({
   const [shortViewport, setShortViewport] = useState(false)
   const [maps, setMaps] = useState<{
     color: THREE.Texture
-    specular: THREE.Texture
   } | null>(null)
   const handleSelect = onSelect ?? (() => undefined)
 
@@ -519,7 +518,7 @@ export function Globe({
     >
       <p className="sr-only">
         Lottery regions: India (Lucky Keralam), United States (Mega Ball), Europe
-        (coming soon). Use the region buttons next to the globe to select a
+        (Coming Soon). Use the region buttons next to the globe to select a
         market.
       </p>
       {!maps ? (

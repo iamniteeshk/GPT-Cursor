@@ -49,7 +49,7 @@ export function Hero() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.55, delay: 0.05 }}
         >
-          <span>ONE WORLD.</span>
+          <span>ONE WORLD. </span>
           <span>MANY LOTTERIES.</span>
         </motion.h1>
 

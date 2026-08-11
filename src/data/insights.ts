@@ -127,7 +127,7 @@ export const insightArticles: InsightArticle[] = [
     title: 'How Lottery Statistics Can Help You Understand Draw History',
     excerpt:
       'Frequency, gaps, and distribution are tools for reading historical draws — useful context, not a forecast of the next result.',
-    href: '#insights-preview',
+    href: '#insights',
   },
   {
     id: 'global-lotteries',
@@ -135,7 +135,7 @@ export const insightArticles: InsightArticle[] = [
     title: 'Inside the World of Global Lotteries',
     excerpt:
       'Formats, calendars, and player tools differ by region. A look at how lottery experiences vary around the world.',
-    href: '#insights-preview',
+    href: '#insights',
   },
   {
     id: 'lottoery-data-tools',
@@ -143,7 +143,7 @@ export const insightArticles: InsightArticle[] = [
     title: 'How LottoERY Uses Data to Build Better Lottery Tools',
     excerpt:
       'Insights, analysis, and predictions in LottoERY apps are designed as informational tools — never as guarantees of winnings.',
-    href: '#insights-preview',
+    href: '#insights',
   },
 ]
 

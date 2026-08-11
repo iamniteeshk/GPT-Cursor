@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { brand, navLinks } from '@/data'
 import { onNavigateClick } from '@/lib/navigation'
 
@@ -6,6 +6,8 @@ export function Navigation() {
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState('#home')
+  const toggleRef = useRef<HTMLButtonElement>(null)
+  const mobileRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const onScroll = () => {
@@ -28,6 +30,34 @@ export function Navigation() {
     document.body.style.overflow = open ? 'hidden' : ''
     return () => {
       document.body.style.overflow = ''
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpen(false)
+        toggleRef.current?.focus()
+      }
+    }
+
+    const onPointer = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node | null
+      if (!target) return
+      if (mobileRef.current?.contains(target)) return
+      if (toggleRef.current?.contains(target)) return
+      setOpen(false)
+    }
+
+    window.addEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onPointer)
+    document.addEventListener('touchstart', onPointer, { passive: true })
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.removeEventListener('mousedown', onPointer)
+      document.removeEventListener('touchstart', onPointer)
     }
   }, [open])
 
@@ -71,6 +101,7 @@ export function Navigation() {
         </a>
 
         <button
+          ref={toggleRef}
           type="button"
           className="nav__toggle"
           aria-expanded={open}
@@ -84,7 +115,12 @@ export function Navigation() {
         </button>
       </div>
 
-      <div id="mobile-nav" className={`nav__mobile ${open ? 'is-open' : ''}`}>
+      <div
+        ref={mobileRef}
+        id="mobile-nav"
+        className={`nav__mobile ${open ? 'is-open' : ''}`}
+        hidden={!open}
+      >
         <nav aria-label="Mobile">
           {navLinks.map((link) => (
             <a

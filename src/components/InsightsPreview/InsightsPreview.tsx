@@ -1,6 +1,5 @@
 import { motion, useReducedMotion } from 'framer-motion'
 import { insightArticles } from '@/data'
-import { onNavigateClick } from '@/lib/navigation'
 
 export function InsightsPreview() {
   const reduce = useReducedMotion()
@@ -32,13 +31,7 @@ export function InsightsPreview() {
               <p className="article-card__cat">{article.category}</p>
               <h3>{article.title}</h3>
               <p>{article.excerpt}</p>
-              <a
-                href={article.href}
-                className="article-card__link"
-                onClick={(e) => onNavigateClick(e, article.href)}
-              >
-                Read preview <span aria-hidden="true">→</span>
-              </a>
+              <p className="article-card__link">Editorial preview</p>
             </motion.article>
           ))}
         </div>

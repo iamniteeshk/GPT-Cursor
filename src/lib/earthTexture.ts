@@ -8,16 +8,9 @@ type LandTopology = Topology<{ land: GeometryCollection }>
 type CountriesTopology = Topology<{ countries: GeometryCollection }>
 
 const COLOR_URL = '/textures/earth-color.png?v=7'
-const SPECULAR_URL = '/textures/earth-specular.png?v=7'
 
-let cachedMaps: {
-  color: THREE.Texture
-  specular: THREE.Texture
-} | null = null
-let cachedPromise: Promise<{
-  color: THREE.Texture
-  specular: THREE.Texture
-}> | null = null
+let cachedMap: THREE.Texture | null = null
+let cachedPromise: Promise<THREE.Texture> | null = null
 
 async function loadTopology(): Promise<{
   land: FeatureCollection
@@ -53,9 +46,7 @@ function mulberry32(seed: number) {
 }
 
 /**
- * Muted production Earth map:
- * deep blue ocean, slate-olive land, crisp borders, subtle terrain.
- * Active regions are painted separately via highlight overlay.
+ * Runtime fallback Earth map when the pre-baked texture fails to load.
  */
 export async function createEarthMaps(
   width = 3072,
@@ -104,13 +95,11 @@ export async function createEarthMaps(
   const path = geoPath(projection, ctx)
   const spath = geoPath(projection, sctx)
 
-  // Muted but readable slate-sage land (holds up under tone mapping)
   ctx.beginPath()
   path(land)
   ctx.fillStyle = '#a8bc8e'
   ctx.fill()
 
-  // Soft interior variation
   ctx.beginPath()
   path(land)
   ctx.fillStyle = 'rgba(92, 110, 82, 0.35)'
@@ -123,7 +112,6 @@ export async function createEarthMaps(
     const r = data[i]
     const g = data[i + 1]
     const b = data[i + 2]
-    // Land pixels are greener/olive than ocean
     if (g > r + 5 && g > b + 8 && g > 70) {
       const n = (rnd() - 0.5) * 20
       const warm = rnd() > 0.7 ? 8 : 0
@@ -139,7 +127,6 @@ export async function createEarthMaps(
   sctx.fillStyle = '#d0d0d0'
   sctx.fill()
 
-  // Country borders — readable silhouette without dominating
   ctx.beginPath()
   path(countries)
   ctx.strokeStyle = 'rgba(232, 238, 230, 0.55)'
@@ -147,14 +134,12 @@ export async function createEarthMaps(
   ctx.lineJoin = 'round'
   ctx.stroke()
 
-  // Coastline rim for continent recognition
   ctx.beginPath()
   path(land)
   ctx.strokeStyle = 'rgba(210, 225, 205, 0.7)'
   ctx.lineWidth = Math.max(1.4, width / 1400)
   ctx.stroke()
 
-  // Secondary latitude/longitude grid
   ctx.beginPath()
   path(geoGraticule10())
   ctx.strokeStyle = 'rgba(245, 196, 81, 0.07)'
@@ -185,31 +170,27 @@ function prepareTexture(
   return tex
 }
 
-/**
- * Prefer pre-baked local world textures for instant recognizable Earth.
- * Falls back to runtime TopoJSON canvas generation if assets fail.
- */
-export async function loadEarthTextures(
-  mobile = false,
-): Promise<{ color: THREE.Texture; specular: THREE.Texture }> {
-  if (cachedMaps) return cachedMaps
-  if (cachedPromise) return cachedPromise
+/** Load the pre-baked Earth color map (specular map omitted — unused at runtime). */
+export async function loadEarthTextures(mobile = false): Promise<{
+  color: THREE.Texture
+}> {
+  if (cachedMap) return { color: cachedMap }
+  if (cachedPromise) {
+    const color = await cachedPromise
+    return { color }
+  }
 
   cachedPromise = (async () => {
     const loader = new THREE.TextureLoader()
     const anisotropy = mobile ? 4 : 8
 
     try {
-      const [color, specular] = await Promise.all([
-        loader.loadAsync(COLOR_URL),
-        loader.loadAsync(SPECULAR_URL),
-      ])
+      const color = await loader.loadAsync(COLOR_URL)
       prepareTexture(color, { srgb: true, anisotropy })
-      prepareTexture(specular, { anisotropy: mobile ? 2 : 4 })
-      cachedMaps = { color, specular }
-      return cachedMaps
+      cachedMap = color
+      return color
     } catch {
-      const { color, specular } = await createEarthMaps(
+      const { color } = await createEarthMaps(
         mobile ? 2048 : 3072,
         mobile ? 1024 : 1536,
       )
@@ -217,18 +198,16 @@ export async function loadEarthTextures(
         srgb: true,
         anisotropy,
       })
-      const specularMap = prepareTexture(new THREE.CanvasTexture(specular), {
-        anisotropy: mobile ? 2 : 4,
-      })
-      cachedMaps = { color: colorMap, specular: specularMap }
-      return cachedMaps
+      cachedMap = colorMap
+      return colorMap
     }
   })().catch((err) => {
     cachedPromise = null
     throw err
   })
 
-  return cachedPromise
+  const color = await cachedPromise
+  return { color }
 }
 
 /** @deprecated use createEarthMaps / loadEarthTextures */
@@ -238,6 +217,6 @@ export async function createEarthCanvas(width = 3072, height = 1536) {
 }
 
 export function clearEarthTextureCache() {
-  cachedMaps = null
+  cachedMap = null
   cachedPromise = null
 }

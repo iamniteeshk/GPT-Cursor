@@ -72,7 +72,12 @@ export function Footer() {
             <ul>
               {legalLinks.map((link) => (
                 <li key={link.href}>
-                  <a href={link.href}>{link.label}</a>
+                  <a
+                    href={link.href}
+                    onClick={(e) => onNavigateClick(e, link.href)}
+                  >
+                    {link.label}
+                  </a>
                 </li>
               ))}
             </ul>
@@ -83,11 +88,17 @@ export function Footer() {
       <div className="footer__legal" id="disclaimer">
         <p>{brand.disclaimer}</p>
         <p id="privacy">
-          © {year} {brand.name}. All rights reserved.
+          Privacy: LottoERY processes only information needed to operate this
+          website and its applications. We do not sell personal data. Contact us
+          for privacy inquiries.
         </p>
         <p id="terms" className="footer__legal-note">
-          Please play responsibly and follow the laws in your jurisdiction.
-          Lottery information and features may vary by region.
+          Terms: Please play responsibly and follow the laws in your
+          jurisdiction. Lottery information and features may vary by region.
+          LottoERY does not sell lottery tickets.
+        </p>
+        <p>
+          © {year} {brand.name}. All rights reserved.
         </p>
         <p className="footer__credit">{brand.credit}</p>
         <nav className="footer__mini" aria-label="Footer">
