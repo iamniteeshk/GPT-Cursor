@@ -19,6 +19,7 @@ import {
   getLatestCursorText,
   isCursorLoggedIn,
   openCursorAgent,
+  resolveCursorPage,
   sendPromptToCursor,
   waitForCursorLogin,
   waitForCursorReply,
@@ -71,9 +72,10 @@ async function readGptPrompt(gptPage, cachedText) {
   return getLatestAssistantText(gptPage, { retries: 10 });
 }
 
-async function runLoop(gptPage, cursorPage) {
+async function runLoop(gptPage, cursorPage, context) {
   let loops = 0;
   let cachedGptText = "";
+  let activeCursorPage = cursorPage;
 
   while (true) {
     loops += 1;
@@ -106,18 +108,23 @@ async function runLoop(gptPage, cursorPage) {
     await fs.writeFile(artifactPath(`gpt-loop-${loops}-prompt.txt`), prompt, "utf8");
     console.log(`Extracted Cursor prompt (${prompt.length} chars). Sending to Cursor...`);
 
-    await cursorPage.bringToFront();
-    await openCursorAgent(cursorPage);
-    await dismissBlockingUi(cursorPage, { label: "Cursor" });
+    activeCursorPage = await resolveCursorPage(context, activeCursorPage);
+    await openCursorAgent(activeCursorPage);
+    await dismissBlockingUi(activeCursorPage, { label: "Cursor" });
 
-    const previousCursorText = await getLatestCursorText(cursorPage).catch(() => "");
-    await sendPromptToCursor(cursorPage, prompt);
+    const previousCursorText = await getLatestCursorText(activeCursorPage).catch(() => "");
+    await sendPromptToCursor(activeCursorPage, prompt);
     console.log("Prompt sent. Waiting for Cursor to finish...");
 
-    await waitForCursorReply(cursorPage, previousCursorText);
-    const cursorText = await getLatestCursorText(cursorPage);
+    activeCursorPage = (await waitForCursorReply(
+      activeCursorPage,
+      previousCursorText,
+      context
+    )) || activeCursorPage;
+
+    const cursorText = await getLatestCursorText(activeCursorPage);
     const textFile = await writeCursorDump(loops, cursorText);
-    const images = await captureCursorImages(cursorPage, loops);
+    const images = await captureCursorImages(activeCursorPage, loops);
 
     console.log(`Cursor reply: ${cursorText.length} chars`);
     console.log(`Saved text: ${textFile}`);
@@ -166,7 +173,6 @@ async function runLoop(gptPage, cursorPage) {
       return { loops, completed: true, finalMessage: nextAssistant };
     }
 
-    // Carry forward so next loop doesn't depend on a fragile reload read.
     cachedGptText = nextAssistant;
     console.log("GPT produced a follow-up prompt. Continuing...");
   }
@@ -198,7 +204,7 @@ async function main() {
     return;
   }
 
-  const result = await runLoop(gptPage, cursorPage);
+  const result = await runLoop(gptPage, cursorPage, context);
   console.log("\n===== DONE =====");
   console.log(`Loops completed: ${result.loops}`);
   console.log(`Stop phrase reached: ${result.completed}`);

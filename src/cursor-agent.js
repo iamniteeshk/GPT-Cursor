@@ -7,10 +7,60 @@ import {
   installDialogHandlers,
 } from "./popups.js";
 
+function agentIdFromUrl(url = config.cursorUrl) {
+  const parts = String(url).split("/").filter(Boolean);
+  return parts[parts.length - 1] || "";
+}
+
+/** Prefer the exact agent tab; fall back to any Cursor agents tab. */
+export async function resolveCursorPage(context, preferredPage = null) {
+  const agentId = agentIdFromUrl();
+  const pages = context.pages().filter((p) => {
+    try {
+      return !p.isClosed();
+    } catch {
+      return false;
+    }
+  });
+
+  const exact = pages.find((p) => p.url().includes(agentId));
+  if (exact) {
+    await exact.bringToFront().catch(() => {});
+    return exact;
+  }
+
+  const agents = pages.find((p) => p.url().includes("cursor.com/agents"));
+  if (agents) {
+    await agents.bringToFront().catch(() => {});
+    if (!agents.url().includes(agentId)) {
+      await agents.goto(config.cursorUrl, { waitUntil: "domcontentloaded" }).catch(() => {});
+      await sleep(2000);
+    }
+    return agents;
+  }
+
+  if (preferredPage && !preferredPage.isClosed()) {
+    await preferredPage.bringToFront().catch(() => {});
+    await preferredPage.goto(config.cursorUrl, { waitUntil: "domcontentloaded" }).catch(() => {});
+    await sleep(2000);
+    return preferredPage;
+  }
+
+  const page = await context.newPage();
+  await page.goto(config.cursorUrl, { waitUntil: "domcontentloaded" });
+  await sleep(2000);
+  return page;
+}
+
 export async function openCursorAgent(page) {
   await installDialogHandlers(page);
-  await page.goto(config.cursorUrl, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(2500);
+  if (!page.url().includes(agentIdFromUrl())) {
+    await page.goto(config.cursorUrl, { waitUntil: "domcontentloaded" });
+    await sleep(2500);
+  } else {
+    await page.bringToFront().catch(() => {});
+    await sleep(500);
+  }
   await dismissBlockingUi(page, { label: "Cursor" });
 }
 
@@ -36,7 +86,6 @@ export async function isCursorLoggedIn(page) {
 
 export async function waitForCursorLogin(page) {
   console.log("Waiting for Cursor login...");
-  console.log("Log in / pass Cloudflare in the Chrome window, then this script continues.");
   await waitUntil("Cursor login", config.loginWaitMs, async () => {
     if (!page.url().includes("cursor.com/agents")) {
       await openCursorAgent(page);
@@ -47,19 +96,101 @@ export async function waitForCursorLogin(page) {
 }
 
 async function getComposer(page) {
-  const candidates = [
-    page.locator('[data-testid="composer"], [data-testid="chat-input"]'),
-    page.locator('div[contenteditable="true"][role="textbox"]'),
-    page.locator('[contenteditable="true"]'),
-    page.locator("textarea"),
-    page.getByPlaceholder(/ask cursor|message|follow/i),
-  ];
-
-  for (const candidate of candidates) {
-    const first = candidate.first();
-    if (await first.isVisible().catch(() => false)) return first;
+  const scopes = [page, ...page.frames()];
+  for (const scope of scopes) {
+    const candidates = [
+      scope.locator('[data-testid="composer"], [data-testid="chat-input"]'),
+      scope.locator('div[contenteditable="true"][role="textbox"]'),
+      scope.locator('[contenteditable="true"]'),
+      scope.locator("textarea"),
+      scope.getByPlaceholder(/ask cursor|message|follow/i),
+    ];
+    for (const candidate of candidates) {
+      const first = candidate.first();
+      if (await first.isVisible().catch(() => false)) return first;
+    }
   }
   return null;
+}
+
+/** Read visible text from the page and every iframe. */
+export async function collectPageText(page) {
+  const chunks = [];
+
+  for (const frame of page.frames()) {
+    try {
+      const text = await frame
+        .locator("body")
+        .innerText({ timeout: 2500 })
+        .catch(async () => frame.evaluate(() => document.body?.innerText || "").catch(() => ""));
+      const trimmed = String(text || "").trim();
+      if (trimmed) chunks.push(trimmed);
+    } catch {
+      // ignore frame read failures
+    }
+  }
+
+  if (!chunks.length) {
+    try {
+      const html = await page.content();
+      const rough = html
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (rough) chunks.push(rough.slice(-20000));
+    } catch {
+      // ignore
+    }
+  }
+
+  return chunks.join("\n\n").trim();
+}
+
+function extractWorkedFor(text) {
+  const matches = String(text).match(/\bWorked for\b[^\n]{0,80}/gi);
+  return matches?.length ? matches[matches.length - 1] : "";
+}
+
+async function stopButtonVisible(page) {
+  for (const frame of page.frames()) {
+    const candidates = [
+      frame.getByRole("button", { name: /\bstop\b/i }),
+      frame.locator('button[aria-label*="Stop" i]'),
+      frame.locator('button[title*="Stop" i]'),
+    ];
+    for (const loc of candidates) {
+      if (await loc.first().isVisible().catch(() => false)) return true;
+    }
+  }
+  return false;
+}
+
+async function isCursorBusy(page, fullText = "") {
+  if (await stopButtonVisible(page)) return true;
+
+  // Active-run phrases commonly shown while cloud agents work.
+  const busyRe =
+    /\b(Thinking|Planning|Working|Generating|Running start script|Running command|Editing files|Exploring|Searching|Applying|In progress|Agent is running|Starting agent)\b/i;
+
+  // Prefer checking short status-ish lines near the top of collected text.
+  const head = String(fullText).slice(0, 2500);
+  if (/\bWorked for\b/i.test(head) && !busyRe.test(head)) {
+    // Finished banner is present and no active verb nearby.
+  }
+
+  if (busyRe.test(head)) {
+    // If "Worked for" exists and there is no Stop button, treat as not busy
+    // (transcript may contain older "Working" words).
+    if (/\bWorked for\b/i.test(fullText) && !(await stopButtonVisible(page))) {
+      return false;
+    }
+    // Without a finished marker, assume busy if those verbs appear in the live head area.
+    if (!/\bWorked for\b/i.test(fullText)) return true;
+  }
+
+  return false;
 }
 
 export async function sendPromptToCursor(page, prompt) {
@@ -67,7 +198,6 @@ export async function sendPromptToCursor(page, prompt) {
   const blocker = await detectHardBlocker(page);
   if (blocker) {
     console.warn(`Hard blocker before send: ${blocker.message}`);
-    console.warn("Waiting for you to clear it in Chrome...");
     await waitUntil("Cursor hard blocker cleared", config.loginWaitMs, async () => {
       await dismissBlockingUi(page, { label: "Cursor" });
       return !(await detectHardBlocker(page));
@@ -94,7 +224,6 @@ export async function sendPromptToCursor(page, prompt) {
 
   await sleep(400);
 
-  // Prefer an explicit Send control; avoid matching generic "Run security audit" buttons.
   const send = page
     .getByRole("button", { name: /^(send|submit)$/i })
     .or(page.locator('button[data-testid*="send" i], button[aria-label*="Send" i]'))
@@ -106,223 +235,143 @@ export async function sendPromptToCursor(page, prompt) {
   }
 }
 
-export async function waitForCursorReply(page, previousText) {
+/**
+ * Wait until the agent finishes.
+ * Done = "Worked for …" fingerprint changed since send, and Stop is gone.
+ */
+export async function waitForCursorReply(page, previousText, context = null) {
+  let active = page;
+  const baselineText = await collectPageText(active);
+  const baselineWorkedFor = extractWorkedFor(baselineText);
+  let sawBusy = false;
   let lastActionKind = "";
   let lastProgressLog = 0;
-  let sawBusy = false;
-  let previousDoneFingerprint = await getDoneFingerprint(page);
   const started = Date.now();
-  const minWaitMs = 45_000;
 
-  await waitUntil("Cursor agent reply", config.cursorReplyTimeoutMs, async () => {
-    await dismissBlockingUi(page, { label: "Cursor" });
-    await maybeClickMarkAsReady(page);
+  console.log(
+    `Cursor wait baseline workedFor="${baselineWorkedFor || "none"}" textChars=${baselineText.length}`
+  );
 
-    const blocker = await detectHardBlocker(page);
-    if (blocker) {
-      if (blocker.kind !== lastActionKind) {
-        lastActionKind = blocker.kind;
-        console.warn(blocker.message);
-        console.warn("Paused — finish that in Chrome, then the loop continues.");
+  await waitUntil(
+    "Cursor agent reply",
+    config.cursorReplyTimeoutMs,
+    async () => {
+      if (context) {
+        active = await resolveCursorPage(context, active);
       }
-      return false;
-    }
-    lastActionKind = "";
 
-    const busy = await isCursorBusy(page);
-    if (busy) sawBusy = true;
+      await dismissBlockingUi(active, { label: "Cursor" }).catch(() => {});
 
-    const text = await getLatestCursorText(page).catch(() => "");
-    const doneFingerprint = await getDoneFingerprint(page);
-    const newDoneSignal =
-      Boolean(doneFingerprint) && doneFingerprint !== previousDoneFingerprint;
-    const markReady = await hasMarkAsReady(page);
-
-    const now = Date.now();
-    if (now - lastProgressLog > 60_000) {
-      lastProgressLog = now;
-      const mins = Math.round((now - started) / 60000);
-      console.log(
-        `… still waiting on Cursor (${mins}m). busy=${busy} sawBusy=${sawBusy} newDone=${newDoneSignal} markReady=${markReady} textChars=${text.length}`
-      );
-    }
-
-    if (!sawBusy && !newDoneSignal && !markReady) return false;
-    if (busy) return false;
-    if (Date.now() - started < minWaitMs && !newDoneSignal && !markReady) return false;
-
-    // If the agent finished but selectors failed, still try body text once more.
-    let finalText = text;
-    if (!finalText || (previousText && finalText === previousText)) {
-      finalText = await getLatestCursorText(page).catch(() => "");
-    }
-    if (!finalText) {
-      // Last resort: if UI shows finished controls, dump body and accept.
-      if ((newDoneSignal || markReady) && sawBusy) {
-        finalText = await readBodyText(page);
+      const blocker = await detectHardBlocker(active);
+      if (blocker) {
+        if (blocker.kind !== lastActionKind) {
+          lastActionKind = blocker.kind;
+          console.warn(blocker.message);
+        }
+        return false;
       }
-    }
-    if (!finalText) return false;
-    if (previousText && finalText === previousText && !newDoneSignal && !markReady) {
+      lastActionKind = "";
+
+      const fullText = await collectPageText(active);
+      const workedFor = extractWorkedFor(fullText);
+      const stopVisible = await stopButtonVisible(active);
+      const busy = stopVisible || (await isCursorBusy(active, fullText));
+      if (busy) sawBusy = true;
+
+      const newDone = Boolean(workedFor) && workedFor !== baselineWorkedFor;
+      const markReady = /mark as ready/i.test(fullText);
+
+      const now = Date.now();
+      if (now - lastProgressLog > 30_000) {
+        lastProgressLog = now;
+        const mins = ((now - started) / 60000).toFixed(1);
+        console.log(
+          `… Cursor wait ${mins}m | url=${active.url().slice(0, 80)} | frames=${active.frames().length} | busy=${busy} stop=${stopVisible} sawBusy=${sawBusy} workedFor="${workedFor || "none"}" newDone=${newDone} textChars=${fullText.length}`
+        );
+      }
+
+      // Still running.
+      if (stopVisible) return false;
+      if (busy && !newDone) return false;
+
+      // Finished: new Worked-for marker (best signal on Cursor cloud agents).
+      if (newDone) {
+        await sleep(2000);
+        const again = await collectPageText(active);
+        const againWorked = extractWorkedFor(again);
+        if (againWorked && againWorked !== baselineWorkedFor && !(await stopButtonVisible(active))) {
+          active.__lastCursorText = pickAssistantPayload(again, previousText);
+          return true;
+        }
+      }
+
+      // Fallback: Mark as ready + substantial new text, after we saw activity.
+      if ((markReady || sawBusy) && fullText.length > 400) {
+        const payload = pickAssistantPayload(fullText, previousText);
+        if (payload && payload !== previousText && payload.length > 120) {
+          // Require either newDone-ish content or at least 90s elapsed to avoid early steal.
+          if (newDone || markReady || Date.now() - started > 90_000) {
+            active.__lastCursorText = payload;
+            return true;
+          }
+        }
+      }
+
       return false;
-    }
+    },
+    3000
+  );
 
-    await sleep(2000);
-    const stillBusy = await isCursorBusy(page);
-    if (stillBusy) return false;
-
-    const againDone = await getDoneFingerprint(page);
-    const againNewDone = Boolean(againDone) && againDone !== previousDoneFingerprint;
-    const againMark = await hasMarkAsReady(page);
-
-    if (againNewDone || againMark || (sawBusy && finalText.length > 200)) {
-      // Stash on page object so caller can reuse if needed.
-      page.__lastCursorText = finalText;
-      return true;
-    }
-
-    return false;
-  });
+  return active;
 }
 
-async function readBodyText(page) {
-  const body = ((await page.locator("body").innerText().catch(() => "")) || "").trim();
-  if (body.length > 80) return body.slice(-12000);
-  return body;
-}
+function pickAssistantPayload(fullText, previousText = "") {
+  const text = String(fullText || "").trim();
+  if (!text) return "";
 
-async function hasMarkAsReady(page) {
-  const btn = page.getByRole("button", { name: /mark as ready/i }).first();
-  return btn.isVisible().catch(() => false);
-}
-
-async function maybeClickMarkAsReady(page) {
-  const btn = page.getByRole("button", { name: /mark as ready/i }).first();
-  if (!(await btn.isVisible().catch(() => false))) return false;
-  try {
-    await btn.click({ timeout: 3000 });
-    console.log('Clicked Cursor "Mark as ready".');
-    await sleep(1000);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function getDoneFingerprint(page) {
-  const patterns = [
-    /\bWorked for\b[^\n]{0,60}/gi,
-    /\bAgent (completed|finished)\b[^\n]{0,60}/gi,
-    /\bMark as ready\b/gi,
-    /\bCreate [Pp]ull [Rr]equest\b/g,
-  ];
-  const body = (await readBodyText(page)) || "";
-  for (const pattern of patterns) {
-    const matches = body.match(pattern);
-    if (matches?.length) return matches[matches.length - 1];
-  }
-  return "";
-}
-
-/**
- * Only treat real status-chrome / Stop as busy — not transcript words.
- */
-async function isCursorBusy(page) {
-  const stop = page.getByRole("button", { name: /^(stop|cancel)$/i }).first();
-  if (await stop.isVisible().catch(() => false)) return true;
-
-  // "Mark as ready" means the run finished — never busy.
-  if (await hasMarkAsReady(page)) return false;
-
-  const statusSelectors = [
-    '[data-testid*="status"]',
-    '[data-testid*="agent-status"]',
-  ];
-
-  const busyRe =
-    /\b(thinking|generating|in progress|running start script|starting agent|agent is running)\b/i;
-
-  for (const selector of statusSelectors) {
-    const nodes = page.locator(selector);
-    const count = await nodes.count().catch(() => 0);
-    for (let i = 0; i < Math.min(count, 8); i += 1) {
-      const text = ((await nodes.nth(i).innerText().catch(() => "")) || "").trim();
-      if (busyRe.test(text)) return true;
-    }
+  // Prefer the section around the latest "Worked for" / Changes made summary.
+  const workedIdx = text.toLowerCase().lastIndexOf("worked for");
+  if (workedIdx >= 0) {
+    const slice = text.slice(Math.max(0, workedIdx - 500), workedIdx + 8000).trim();
+    if (slice.length > 80) return slice;
   }
 
-  // Exact-ish header status chips only (avoid matching "Working" inside summaries).
-  const headerBusy = page
-    .locator("header, [data-testid*='agent'], [class*='status']")
-    .getByText(/^(Thinking…|Thinking\.\.\.|Working…|Working\.\.\.|Generating|Running start script|In progress)$/i)
-    .first();
-  if (await headerBusy.isVisible().catch(() => false)) return true;
+  const changesIdx = text.toLowerCase().lastIndexOf("changes made");
+  if (changesIdx >= 0) {
+    const slice = text.slice(changesIdx, changesIdx + 8000).trim();
+    if (slice.length > 80) return slice;
+  }
 
-  return false;
+  const tail = text.slice(-10000).trim();
+  if (previousText && tail === previousText) return tail;
+  return tail;
 }
 
 export async function getLatestCursorText(page) {
-  if (page.__lastCursorText) {
-    const cached = page.__lastCursorText;
+  if (page.__lastCursorText?.trim()) {
+    const cached = page.__lastCursorText.trim();
     page.__lastCursorText = "";
-    if (cached?.trim()) return cached.trim();
+    return cached;
   }
 
-  const selectors = [
-    '[data-message-author-role="assistant"]',
-    '[data-testid="assistant-message"]',
-    '[data-testid="agent-message"]',
-    "article",
-    ".prose",
-    ".markdown",
-  ];
-
-  for (const selector of selectors) {
-    try {
-      const nodes = page.locator(selector);
-      const count = await nodes.count();
-      for (let i = count - 1; i >= 0 && i >= count - 5; i -= 1) {
-        const text = ((await nodes.nth(i).innerText().catch(() => "")) || "").trim();
-        if (text.length > 40) return text;
-      }
-    } catch {
-      // try next selector
-    }
-  }
-
-  try {
-    const main = page.locator("main").first();
-    if (await main.isVisible().catch(() => false)) {
-      const text = ((await main.innerText().catch(() => "")) || "").trim();
-      if (text.length > 40) return text;
-    }
-  } catch {
-    // fall through
-  }
-
-  const body = await readBodyText(page);
-  if (body.length > 40) return body;
-
+  const full = await collectPageText(page);
+  const payload = pickAssistantPayload(full);
+  if (payload.length > 40) return payload;
   throw new Error("Could not read Cursor agent response text.");
 }
 
 export async function captureCursorImages(page, loopIndex) {
   const saved = [];
-  const images = page.locator(
-    'main img, [data-testid="assistant-message"] img, article img, .prose img'
-  );
-  const count = await images.count();
+  const images = page.locator("img");
+  const count = await images.count().catch(() => 0);
 
-  for (let i = 0; i < count; i += 1) {
+  for (let i = 0; i < Math.min(count, 30); i += 1) {
     const img = images.nth(i);
     if (!(await img.isVisible().catch(() => false))) continue;
-
     const box = await img.boundingBox();
-    if (!box || box.width < 40 || box.height < 40) continue;
-
+    if (!box || box.width < 80 || box.height < 80) continue;
     const src = (await img.getAttribute("src")) || "";
     if (/avatar|icon|logo|favicon/i.test(src)) continue;
-
     const file = artifactPath(`cursor-loop-${loopIndex}-img-${i + 1}.png`);
     try {
       await img.screenshot({ path: file });
@@ -335,7 +384,6 @@ export async function captureCursorImages(page, loopIndex) {
   const summary = artifactPath(`cursor-loop-${loopIndex}-response.png`);
   await page.screenshot({ path: summary, fullPage: false });
   saved.push(summary);
-
   return saved;
 }
 
