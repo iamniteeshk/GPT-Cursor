@@ -116,6 +116,7 @@ export async function waitForCursorReply(page, previousText) {
 
   await waitUntil("Cursor agent reply", config.cursorReplyTimeoutMs, async () => {
     await dismissBlockingUi(page, { label: "Cursor" });
+    await maybeClickMarkAsReady(page);
 
     const blocker = await detectHardBlocker(page);
     if (blocker) {
@@ -135,39 +136,48 @@ export async function waitForCursorReply(page, previousText) {
     const doneFingerprint = await getDoneFingerprint(page);
     const newDoneSignal =
       Boolean(doneFingerprint) && doneFingerprint !== previousDoneFingerprint;
+    const markReady = await hasMarkAsReady(page);
 
     const now = Date.now();
     if (now - lastProgressLog > 60_000) {
       lastProgressLog = now;
       const mins = Math.round((now - started) / 60000);
       console.log(
-        `… still waiting on Cursor (${mins}m). busy=${busy} sawBusy=${sawBusy} newDone=${newDoneSignal} textChars=${text.length}`
+        `… still waiting on Cursor (${mins}m). busy=${busy} sawBusy=${sawBusy} newDone=${newDoneSignal} markReady=${markReady} textChars=${text.length}`
       );
     }
 
-    // Must observe the new run actually start (busy), unless a clearly new done fingerprint appears.
-    if (!sawBusy && !newDoneSignal) return false;
+    if (!sawBusy && !newDoneSignal && !markReady) return false;
     if (busy) return false;
-    if (!text) return false;
-    if (previousText && text === previousText) return false;
-    if (Date.now() - started < minWaitMs && !newDoneSignal) return false;
+    if (Date.now() - started < minWaitMs && !newDoneSignal && !markReady) return false;
 
-    // Require either a NEW "Worked for …" (or similar) after send, or stable post-busy text.
-    if (!newDoneSignal && !sawBusy) return false;
+    // If the agent finished but selectors failed, still try body text once more.
+    let finalText = text;
+    if (!finalText || (previousText && finalText === previousText)) {
+      finalText = await getLatestCursorText(page).catch(() => "");
+    }
+    if (!finalText) {
+      // Last resort: if UI shows finished controls, dump body and accept.
+      if ((newDoneSignal || markReady) && sawBusy) {
+        finalText = await readBodyText(page);
+      }
+    }
+    if (!finalText) return false;
+    if (previousText && finalText === previousText && !newDoneSignal && !markReady) {
+      return false;
+    }
 
-    await sleep(3000);
-    await dismissBlockingUi(page, { label: "Cursor" });
-    const again = await getLatestCursorText(page).catch(() => "");
+    await sleep(2000);
     const stillBusy = await isCursorBusy(page);
+    if (stillBusy) return false;
+
     const againDone = await getDoneFingerprint(page);
     const againNewDone = Boolean(againDone) && againDone !== previousDoneFingerprint;
+    const againMark = await hasMarkAsReady(page);
 
-    if (stillBusy) return false;
-    if (again !== text) return false;
-    if (previousText && again === previousText) return false;
-
-    // Prefer confirming a new done marker so we don't steal the previous turn's leftover.
-    if (againNewDone || (sawBusy && again.length > Math.max(200, (previousText || "").length * 0.5))) {
+    if (againNewDone || againMark || (sawBusy && finalText.length > 200)) {
+      // Stash on page object so caller can reuse if needed.
+      page.__lastCursorText = finalText;
       return true;
     }
 
@@ -175,37 +185,62 @@ export async function waitForCursorReply(page, previousText) {
   });
 }
 
+async function readBodyText(page) {
+  const body = ((await page.locator("body").innerText().catch(() => "")) || "").trim();
+  if (body.length > 80) return body.slice(-12000);
+  return body;
+}
+
+async function hasMarkAsReady(page) {
+  const btn = page.getByRole("button", { name: /mark as ready/i }).first();
+  return btn.isVisible().catch(() => false);
+}
+
+async function maybeClickMarkAsReady(page) {
+  const btn = page.getByRole("button", { name: /mark as ready/i }).first();
+  if (!(await btn.isVisible().catch(() => false))) return false;
+  try {
+    await btn.click({ timeout: 3000 });
+    console.log('Clicked Cursor "Mark as ready".');
+    await sleep(1000);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function getDoneFingerprint(page) {
   const patterns = [
-    /\bWorked for\b[^\n]{0,40}/i,
-    /\bAgent (completed|finished)\b[^\n]{0,40}/i,
-    /\bCreate [Pp]ull [Rr]equest\b/,
+    /\bWorked for\b[^\n]{0,60}/gi,
+    /\bAgent (completed|finished)\b[^\n]{0,60}/gi,
+    /\bMark as ready\b/gi,
+    /\bCreate [Pp]ull [Rr]equest\b/g,
   ];
-  const body = ((await page.locator("body").innerText().catch(() => "")) || "").slice(-6000);
+  const body = (await readBodyText(page)) || "";
   for (const pattern of patterns) {
-    const match = body.match(pattern);
-    if (match) return match[0];
+    const matches = body.match(pattern);
+    if (matches?.length) return matches[matches.length - 1];
   }
   return "";
 }
 
 /**
- * Avoid matching transcript words like "running locally".
- * Only treat status-chrome / stop button as busy.
+ * Only treat real status-chrome / Stop as busy — not transcript words.
  */
 async function isCursorBusy(page) {
   const stop = page.getByRole("button", { name: /^(stop|cancel)$/i }).first();
   if (await stop.isVisible().catch(() => false)) return true;
 
+  // "Mark as ready" means the run finished — never busy.
+  if (await hasMarkAsReady(page)) return false;
+
   const statusSelectors = [
     '[data-testid*="status"]',
     '[data-testid*="agent-status"]',
-    '[aria-live="polite"]',
-    '[aria-live="assertive"]',
   ];
 
   const busyRe =
-    /\b(thinking|working|generating|in progress|running start script|starting agent|agent is running)\b/i;
+    /\b(thinking|generating|in progress|running start script|starting agent|agent is running)\b/i;
 
   for (const selector of statusSelectors) {
     const nodes = page.locator(selector);
@@ -216,21 +251,23 @@ async function isCursorBusy(page) {
     }
   }
 
+  // Exact-ish header status chips only (avoid matching "Working" inside summaries).
   const headerBusy = page
-    .getByText(
-      /^(Thinking|Working|Generating|Running start script|Starting|In progress)\b/i
-    )
+    .locator("header, [data-testid*='agent'], [class*='status']")
+    .getByText(/^(Thinking…|Thinking\.\.\.|Working…|Working\.\.\.|Generating|Running start script|In progress)$/i)
     .first();
   if (await headerBusy.isVisible().catch(() => false)) return true;
 
   return false;
 }
 
-async function isCursorDone(page) {
-  return Boolean(await getDoneFingerprint(page));
-}
-
 export async function getLatestCursorText(page) {
+  if (page.__lastCursorText) {
+    const cached = page.__lastCursorText;
+    page.__lastCursorText = "";
+    if (cached?.trim()) return cached.trim();
+  }
+
   const selectors = [
     '[data-message-author-role="assistant"]',
     '[data-testid="assistant-message"]',
@@ -241,18 +278,30 @@ export async function getLatestCursorText(page) {
   ];
 
   for (const selector of selectors) {
-    const nodes = page.locator(selector);
-    const count = await nodes.count();
-    if (count > 0) {
-      const text = (await nodes.nth(count - 1).innerText()).trim();
-      if (text) return text;
+    try {
+      const nodes = page.locator(selector);
+      const count = await nodes.count();
+      for (let i = count - 1; i >= 0 && i >= count - 5; i -= 1) {
+        const text = ((await nodes.nth(i).innerText().catch(() => "")) || "").trim();
+        if (text.length > 40) return text;
+      }
+    } catch {
+      // try next selector
     }
   }
 
-  const main = page.locator("main").first();
-  if (await main.isVisible().catch(() => false)) {
-    return (await main.innerText()).trim();
+  try {
+    const main = page.locator("main").first();
+    if (await main.isVisible().catch(() => false)) {
+      const text = ((await main.innerText().catch(() => "")) || "").trim();
+      if (text.length > 40) return text;
+    }
+  } catch {
+    // fall through
   }
+
+  const body = await readBodyText(page);
+  if (body.length > 40) return body;
 
   throw new Error("Could not read Cursor agent response text.");
 }
