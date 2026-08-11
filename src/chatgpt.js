@@ -143,16 +143,23 @@ export async function sendToChatGpt(page, { text, imagePaths = [] }) {
 
   await sleep(500);
 
-  const sendButton = page
-    .locator(
-      'button[data-testid="send-button"], button[aria-label*="Send"], button:has(svg)'
-    )
-    .filter({ hasNotText: /stop/i })
-    .last();
+  // Never use broad button:has(svg) — it matches image "Remove file" tiles.
+  const sendButton = page.locator(
+    'button[data-testid="send-button"], button[aria-label="Send prompt"], button[aria-label="Send message"], button[aria-label*="Send message" i]'
+  ).filter({ hasNot: page.locator('[aria-label*="Remove" i], [aria-label*="Open image" i]') }).last();
 
+  let sent = false;
   if (await sendButton.isVisible().catch(() => false)) {
-    await sendButton.click();
-  } else {
+    try {
+      await sendButton.click({ timeout: 8_000 });
+      sent = true;
+    } catch (error) {
+      console.warn(`ChatGPT send button click failed (${error.message.split("\n")[0]}). Falling back to Enter.`);
+    }
+  }
+
+  if (!sent) {
+    await composer.click({ timeout: 5_000 }).catch(() => {});
     await page.keyboard.press("Enter");
   }
 

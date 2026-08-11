@@ -109,7 +109,10 @@ export async function sendPromptToCursor(page, prompt) {
 export async function waitForCursorReply(page, previousText) {
   let lastActionKind = "";
   let lastProgressLog = 0;
+  let sawBusy = false;
+  let previousDoneFingerprint = await getDoneFingerprint(page);
   const started = Date.now();
+  const minWaitMs = 45_000;
 
   await waitUntil("Cursor agent reply", config.cursorReplyTimeoutMs, async () => {
     await dismissBlockingUi(page, { label: "Cursor" });
@@ -125,39 +128,65 @@ export async function waitForCursorReply(page, previousText) {
     }
     lastActionKind = "";
 
-    const done = await isCursorDone(page);
     const busy = await isCursorBusy(page);
+    if (busy) sawBusy = true;
+
     const text = await getLatestCursorText(page).catch(() => "");
+    const doneFingerprint = await getDoneFingerprint(page);
+    const newDoneSignal =
+      Boolean(doneFingerprint) && doneFingerprint !== previousDoneFingerprint;
 
     const now = Date.now();
     if (now - lastProgressLog > 60_000) {
       lastProgressLog = now;
       const mins = Math.round((now - started) / 60000);
       console.log(
-        `… still waiting on Cursor (${mins}m). busy=${busy} doneSignal=${done} textChars=${text.length}`
+        `… still waiting on Cursor (${mins}m). busy=${busy} sawBusy=${sawBusy} newDone=${newDoneSignal} textChars=${text.length}`
       );
     }
 
-    // Prefer explicit done signals even if leftover "running" text exists in the transcript.
-    if (done && text && (!previousText || text !== previousText)) {
-      await sleep(2500);
-      const again = await getLatestCursorText(page).catch(() => "");
-      const stillDone = await isCursorDone(page);
-      const againBusy = await isCursorBusy(page);
-      if (again === text && stillDone && !againBusy) return true;
-      if (again === text && stillDone) return true;
-    }
-
+    // Must observe the new run actually start (busy), unless a clearly new done fingerprint appears.
+    if (!sawBusy && !newDoneSignal) return false;
     if (busy) return false;
     if (!text) return false;
     if (previousText && text === previousText) return false;
+    if (Date.now() - started < minWaitMs && !newDoneSignal) return false;
+
+    // Require either a NEW "Worked for …" (or similar) after send, or stable post-busy text.
+    if (!newDoneSignal && !sawBusy) return false;
 
     await sleep(3000);
     await dismissBlockingUi(page, { label: "Cursor" });
     const again = await getLatestCursorText(page).catch(() => "");
     const stillBusy = await isCursorBusy(page);
-    return again === text && !stillBusy;
+    const againDone = await getDoneFingerprint(page);
+    const againNewDone = Boolean(againDone) && againDone !== previousDoneFingerprint;
+
+    if (stillBusy) return false;
+    if (again !== text) return false;
+    if (previousText && again === previousText) return false;
+
+    // Prefer confirming a new done marker so we don't steal the previous turn's leftover.
+    if (againNewDone || (sawBusy && again.length > Math.max(200, (previousText || "").length * 0.5))) {
+      return true;
+    }
+
+    return false;
   });
+}
+
+async function getDoneFingerprint(page) {
+  const patterns = [
+    /\bWorked for\b[^\n]{0,40}/i,
+    /\bAgent (completed|finished)\b[^\n]{0,40}/i,
+    /\bCreate [Pp]ull [Rr]equest\b/,
+  ];
+  const body = ((await page.locator("body").innerText().catch(() => "")) || "").slice(-6000);
+  for (const pattern of patterns) {
+    const match = body.match(pattern);
+    if (match) return match[0];
+  }
+  return "";
 }
 
 /**
@@ -187,7 +216,6 @@ async function isCursorBusy(page) {
     }
   }
 
-  // Narrow visible status lines near the top of the agent UI (not full transcript).
   const headerBusy = page
     .getByText(
       /^(Thinking|Working|Generating|Running start script|Starting|In progress)\b/i
@@ -195,30 +223,11 @@ async function isCursorBusy(page) {
     .first();
   if (await headerBusy.isVisible().catch(() => false)) return true;
 
-  const workedFor = page.getByText(/\bWorked for\b/i).first();
-  if (await workedFor.isVisible().catch(() => false)) {
-    // Finished agents often keep "Worked for Xm" visible — not busy.
-    return false;
-  }
-
   return false;
 }
 
 async function isCursorDone(page) {
-  const donePatterns = [
-    /\bWorked for\b/i,
-    /\bAgent (completed|finished)\b/i,
-    /\bCreate [Pp]ull [Rr]equest\b/,
-    /\bPull request\b/,
-    /\bPR ready\b/i,
-    /\bAutomation Done\b/,
-  ];
-
-  for (const pattern of donePatterns) {
-    const el = page.getByText(pattern).first();
-    if (await el.isVisible().catch(() => false)) return true;
-  }
-  return false;
+  return Boolean(await getDoneFingerprint(page));
 }
 
 export async function getLatestCursorText(page) {
