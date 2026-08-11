@@ -1,61 +1,59 @@
-import type { ExpansionRegion, InsightFeature } from './types'
+import type {
+  ExpansionRegion,
+  HowStep,
+  InsightArticle,
+  InsightFeature,
+} from './types'
 
 export const insightFeatures: InsightFeature[] = [
   {
     id: 'results',
-    title: 'Lottery Results',
+    title: 'Results',
     description:
-      'Clear, timely draw results presented with context — so you always know what landed and when.',
+      'Find lottery results in one place — clear draw outcomes with context.',
     icon: 'results',
+    availability: 'all',
   },
   {
     id: 'analysis',
-    title: 'Number Analysis',
+    title: 'Analysis',
     description:
-      'Break down frequency, patterns, and draw history with tools built for deeper understanding.',
+      'Explore historical number patterns and statistics across supported draws.',
     icon: 'analysis',
+    availability: 'all',
   },
   {
     id: 'predictions',
     title: 'Predictions',
     description:
-      'Probability-informed prediction views that surface trends without promising outcomes.',
+      'Explore algorithmic insights where available — informational only, never guarantees.',
     icon: 'predictions',
+    availability: 'selected',
+    note: 'Availability varies by app',
   },
   {
     id: 'picks',
     title: 'Lucky Picks',
     description:
-      'Generate thoughtful pick combinations powered by configurable analysis preferences.',
+      'Generate interesting number selections where the product supports picks.',
     icon: 'picks',
+    availability: 'all',
   },
   {
     id: 'history',
-    title: 'Historical Results',
+    title: 'History',
     description:
-      'Browse past draws with searchable archives that make long-term patterns easy to explore.',
+      'Browse previous draws and historical information for deeper context.',
     icon: 'history',
+    availability: 'all',
   },
   {
-    id: 'stats',
-    title: 'Statistics',
+    id: 'global',
+    title: 'Global Access',
     description:
-      'Visual statistics for hot/cold numbers, draw intervals, and distribution snapshots.',
-    icon: 'stats',
-  },
-  {
-    id: 'rankings',
-    title: 'Number Rankings',
-    description:
-      'Rank numbers by appearance, recency, and other analytical signals you choose to follow.',
-    icon: 'rankings',
-  },
-  {
-    id: 'insights',
-    title: 'Intelligent Insights',
-    description:
-      'Personalized tools that turn raw lottery data into actionable, human-readable insights.',
-    icon: 'insights',
+      'Discover lottery experiences across different regions in one ecosystem.',
+    icon: 'global',
+    availability: 'all',
   },
 ]
 
@@ -73,16 +71,16 @@ export const expansionRegions: ExpansionRegion[] = [
     blurb: 'UK National Lottery tools and insights on the LottoERY stack.',
   },
   {
-    id: 'australia',
-    name: 'Australia',
-    status: 'coming-soon',
-    blurb: 'Australian lottery coverage built for local draw calendars.',
-  },
-  {
     id: 'canada',
     name: 'Canada',
     status: 'coming-soon',
     blurb: 'Lotto Max, 6/49, and regional lottery experiences ahead.',
+  },
+  {
+    id: 'australia',
+    name: 'Australia',
+    status: 'coming-soon',
+    blurb: 'Australian lottery coverage built for local draw calendars.',
   },
   {
     id: 'asia',
@@ -92,9 +90,68 @@ export const expansionRegions: ExpansionRegion[] = [
   },
   {
     id: 'more',
-    name: 'More Coming Soon',
+    name: 'More',
     status: 'coming-soon',
-    blurb: 'New regions join the LottoERY planet as the ecosystem grows.',
+    blurb: 'New regions join the LottoERY universe as the ecosystem grows.',
+  },
+]
+
+export const howSteps: HowStep[] = [
+  {
+    id: 'choose',
+    step: '01',
+    title: 'Choose a Lottery',
+    description:
+      'Explore lotteries from different countries and regions on the LottoERY map.',
+  },
+  {
+    id: 'explore',
+    step: '02',
+    title: 'Explore the Data',
+    description:
+      'Use results, statistics, analysis and available lottery tools for that market.',
+  },
+  {
+    id: 'decide',
+    step: '03',
+    title: 'Make Better-Informed Choices',
+    description:
+      'Use insights and predictions as information — never as guarantees of winning.',
+  },
+]
+
+export const insightArticles: InsightArticle[] = [
+  {
+    id: 'reading-results',
+    category: 'Guides',
+    title: 'How to read lottery results with clearer context',
+    excerpt:
+      'A practical walkthrough of draw outcomes, draw cadence, and what “results” should (and shouldn’t) tell you.',
+    href: '#insights-preview',
+  },
+  {
+    id: 'number-patterns',
+    category: 'Analysis',
+    title: 'Understanding number patterns without myths',
+    excerpt:
+      'Frequency, gaps, and distribution — useful lenses for curiosity, not promises about the next draw.',
+    href: '#insights-preview',
+  },
+  {
+    id: 'global-lotteries',
+    category: 'Global',
+    title: 'Why lottery experiences differ around the world',
+    excerpt:
+      'Formats, calendars, and tools vary by region — LottoERY is built to adapt without becoming an operator.',
+    href: '#insights-preview',
+  },
+  {
+    id: 'app-updates',
+    category: 'Updates',
+    title: 'What’s next for Lucky Keralam and Mega Ball',
+    excerpt:
+      'Product direction for India’s Kerala Lottery app and the US Powerball + Mega Millions experience.',
+    href: '#apps',
   },
 ]
 
@@ -110,6 +167,9 @@ export const brand = {
   name: 'LottoERY',
   tagline: 'ONE WORLD. MANY LOTTERIES.',
   supporting: 'The world of lotteries. One place.',
+  about:
+    'LottoERY is a technology ecosystem focused on building lottery-related applications, tools, analysis and experiences for users across different regions.',
   disclaimer:
-    'LottoERY provides lottery-related applications, information, analysis and tools. LottoERY does not operate or conduct lotteries. Lottery participation is subject to local laws and age restrictions. Analysis and predictions are informational and do not guarantee winnings.',
+    'LottoERY provides lottery-related applications, information, analysis and tools. LottoERY does not operate or conduct lotteries. Predictions and analysis are informational only and do not guarantee winnings. Lottery outcomes are random. Users must follow applicable local laws and age restrictions. Feature availability may vary by region and product.',
+  credit: 'Developed by IAMNK • Powered by GNK Services',
 } as const

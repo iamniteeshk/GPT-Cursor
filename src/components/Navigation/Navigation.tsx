@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { brand, navLinks } from '@/data'
+import { onNavigateClick } from '@/lib/navigation'
 
 export function Navigation() {
   const [scrolled, setScrolled] = useState(false)
@@ -35,7 +36,15 @@ export function Navigation() {
       className={`nav ${scrolled ? 'nav--scrolled' : ''} ${open ? 'nav--open' : ''}`}
     >
       <div className="nav__inner">
-        <a href="#home" className="nav__logo" aria-label="LottoERY home">
+        <a
+          href="#home"
+          className="nav__logo"
+          aria-label="LottoERY home"
+          onClick={(e) => {
+            onNavigateClick(e, '#home')
+            setOpen(false)
+          }}
+        >
           <span className="nav__logo-mark" aria-hidden="true" />
           <span className="nav__logo-text">{brand.name}</span>
         </a>
@@ -46,13 +55,19 @@ export function Navigation() {
               key={link.href}
               href={link.href}
               className={`nav__link ${active === link.href ? 'is-active' : ''}`}
+              aria-current={active === link.href ? 'page' : undefined}
+              onClick={(e) => onNavigateClick(e, link.href)}
             >
               {link.label}
             </a>
           ))}
         </nav>
 
-        <a href="#lotteries" className="nav__cta btn btn--gold btn--sm">
+        <a
+          href="#lotteries"
+          className="nav__cta btn btn--gold btn--sm"
+          onClick={(e) => onNavigateClick(e, '#lotteries')}
+        >
           Explore Lotteries
         </a>
 
@@ -77,7 +92,10 @@ export function Navigation() {
               key={link.href}
               href={link.href}
               className={`nav__mobile-link ${active === link.href ? 'is-active' : ''}`}
-              onClick={() => setOpen(false)}
+              onClick={(e) => {
+                onNavigateClick(e, link.href)
+                setOpen(false)
+              }}
             >
               {link.label}
             </a>
@@ -85,7 +103,10 @@ export function Navigation() {
           <a
             href="#lotteries"
             className="btn btn--gold"
-            onClick={() => setOpen(false)}
+            onClick={(e) => {
+              onNavigateClick(e, '#lotteries')
+              setOpen(false)
+            }}
           >
             Explore Lotteries
           </a>

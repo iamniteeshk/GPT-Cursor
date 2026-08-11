@@ -7,25 +7,21 @@ const icons: Record<string, string> = {
   predictions: '✧',
   picks: '✦',
   history: '◷',
-  stats: '▣',
-  rankings: '▲',
-  insights: '◎',
+  global: '◎',
 }
 
 export function Insights() {
   const reduce = useReducedMotion()
 
   return (
-    <section id="insights" className="section insights">
+    <section id="insights" className="section insights" tabIndex={-1}>
       <div className="section__inner">
         <header className="section__header">
           <p className="section__eyebrow">Value Beyond Apps</p>
           <h2 className="section__title">Enhanced Results for You</h2>
           <p className="section__lead">
-            Inside the LottoERY universe, lottery data becomes clarity —
-            analysis, probability insights, statistics, and personalized tools.
-            Never a guarantee of winnings; always a smarter way to explore the
-            numbers.
+            Features that turn lottery data into clarity. Capabilities can vary
+            by product — never a guarantee of winnings.
           </p>
         </header>
 
@@ -34,10 +30,10 @@ export function Insights() {
             <motion.article
               key={feature.id}
               className="insight-card"
-              initial={reduce ? false : { opacity: 0, y: 24 }}
+              initial={reduce ? false : { opacity: 0, y: 18 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: '-40px' }}
-              transition={{ duration: 0.45, delay: (index % 4) * 0.06 }}
+              transition={{ duration: 0.35, delay: (index % 3) * 0.05 }}
               whileHover={reduce ? undefined : { y: -4 }}
             >
               <span className="insight-card__icon" aria-hidden="true">
@@ -45,6 +41,9 @@ export function Insights() {
               </span>
               <h3 className="insight-card__title">{feature.title}</h3>
               <p className="insight-card__desc">{feature.description}</p>
+              {feature.note && (
+                <p className="insight-card__note">{feature.note}</p>
+              )}
             </motion.article>
           ))}
         </div>

@@ -1,10 +1,21 @@
 import { brand, navLinks } from '@/data'
+import { onNavigateClick } from '@/lib/navigation'
+
+const exploreLinks = [
+  { label: 'Lotteries', href: '#lotteries' },
+  { label: 'Apps', href: '#apps' },
+  { label: 'Insights', href: '#insights' },
+]
+
+const companyLinks = [
+  { label: 'About', href: '#about' },
+  { label: 'Contact', href: '#contact' },
+]
 
 const legalLinks = [
   { label: 'Privacy', href: '#privacy' },
   { label: 'Terms', href: '#terms' },
   { label: 'Disclaimer', href: '#disclaimer' },
-  { label: 'Contact', href: '#contact' },
 ]
 
 export function Footer() {
@@ -14,7 +25,11 @@ export function Footer() {
     <footer className="footer" id="contact">
       <div className="footer__inner">
         <div className="footer__brand">
-          <a href="#home" className="footer__logo">
+          <a
+            href="#home"
+            className="footer__logo"
+            onClick={(e) => onNavigateClick(e, '#home')}
+          >
             {brand.name}
           </a>
           <p className="footer__tagline">{brand.tagline}</p>
@@ -25,9 +40,29 @@ export function Footer() {
           <div>
             <h3>Explore</h3>
             <ul>
-              {navLinks.map((link) => (
+              {exploreLinks.map((link) => (
                 <li key={link.href}>
-                  <a href={link.href}>{link.label}</a>
+                  <a
+                    href={link.href}
+                    onClick={(e) => onNavigateClick(e, link.href)}
+                  >
+                    {link.label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h3>Company</h3>
+            <ul>
+              {companyLinks.map((link) => (
+                <li key={link.href}>
+                  <a
+                    href={link.href}
+                    onClick={(e) => onNavigateClick(e, link.href)}
+                  >
+                    {link.label}
+                  </a>
                 </li>
               ))}
             </ul>
@@ -51,9 +86,21 @@ export function Footer() {
           © {year} {brand.name}. All rights reserved.
         </p>
         <p id="terms" className="footer__legal-note">
-          Lottery results and analysis are provided for informational purposes
-          only. Please play responsibly and follow the laws in your jurisdiction.
+          Please play responsibly and follow the laws in your jurisdiction.
+          Lottery information and features may vary by region.
         </p>
+        <p className="footer__credit">{brand.credit}</p>
+        <nav className="footer__mini" aria-label="Footer">
+          {navLinks.map((link) => (
+            <a
+              key={link.href}
+              href={link.href}
+              onClick={(e) => onNavigateClick(e, link.href)}
+            >
+              {link.label}
+            </a>
+          ))}
+        </nav>
       </div>
     </footer>
   )

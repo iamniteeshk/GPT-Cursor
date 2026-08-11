@@ -1,9 +1,14 @@
 export type AppStatus = 'available' | 'coming-soon'
 
-export interface LotteryRegion {
+export interface MarketFeature {
+  id: string
+  label: string
+}
+
+export interface LotteryMarket {
   id: string
   region: string
-  country?: string
+  country: string
   lottery: string
   product: string | null
   status: AppStatus
@@ -11,30 +16,30 @@ export interface LotteryRegion {
   lng: number
   description: string
   accent: string
-  ctaLabel: string
-  ctaHref: string
-}
-
-export interface LottoApp {
-  id: string
-  name: string
-  lottery: string
-  region: string
-  status: AppStatus
-  description: string
-  tagline: string
-  platforms: ('ios' | 'android' | 'web')[]
-  accent: string
   accentSecondary: string
   ctaLabel: string
+  /** In-page destination, e.g. #apps-lucky-keralam */
   ctaHref: string
+  tagline: string
+  platforms: ('ios' | 'android' | 'web')[]
+  features: MarketFeature[]
+  /** ISO 3166-1 numeric country ids for globe highlight (world-atlas) */
+  highlightCountryIds: number[]
+  shortBlurb: string
 }
+
+/** @deprecated alias — use LotteryMarket */
+export type LotteryRegion = LotteryMarket
+/** @deprecated alias — use LotteryMarket for app products */
+export type LottoApp = LotteryMarket
 
 export interface InsightFeature {
   id: string
   title: string
   description: string
-  icon: 'results' | 'analysis' | 'predictions' | 'picks' | 'history' | 'stats' | 'rankings' | 'insights'
+  icon: 'results' | 'analysis' | 'predictions' | 'picks' | 'history' | 'global'
+  availability: 'all' | 'selected'
+  note?: string
 }
 
 export interface ExpansionRegion {
@@ -42,6 +47,21 @@ export interface ExpansionRegion {
   name: string
   status: 'coming-soon'
   blurb: string
+}
+
+export interface InsightArticle {
+  id: string
+  category: 'Analysis' | 'Statistics' | 'Guides' | 'Global' | 'Updates'
+  title: string
+  excerpt: string
+  href: string
+}
+
+export interface HowStep {
+  id: string
+  step: string
+  title: string
+  description: string
 }
 
 export function statusLabel(status: AppStatus): 'Available' | 'Coming Soon' {
