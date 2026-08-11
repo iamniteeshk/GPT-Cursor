@@ -1,6 +1,15 @@
-import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  Component,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { OrbitControls, Stars } from '@react-three/drei'
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import * as THREE from 'three'
 import { lotteryRegions } from '@/data'
 import type { LotteryRegion } from '@/data'
@@ -20,16 +29,15 @@ function createEarthTexture() {
   canvas.height = 1024
   const ctx = canvas.getContext('2d')!
 
-  const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
-  gradient.addColorStop(0, '#0a1a2e')
-  gradient.addColorStop(0.35, '#0d3a5c')
-  gradient.addColorStop(0.5, '#0e4d6e')
-  gradient.addColorStop(0.65, '#0d3a5c')
-  gradient.addColorStop(1, '#0a1a2e')
-  ctx.fillStyle = gradient
+  const ocean = ctx.createLinearGradient(0, 0, 0, canvas.height)
+  ocean.addColorStop(0, '#123a5c')
+  ocean.addColorStop(0.35, '#1a5f88')
+  ocean.addColorStop(0.5, '#2174a0')
+  ocean.addColorStop(0.65, '#1a5f88')
+  ocean.addColorStop(1, '#123a5c')
+  ctx.fillStyle = ocean
   ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-  ctx.fillStyle = '#1a5c45'
   const continents = [
     [
       [280, 220],
@@ -86,6 +94,7 @@ function createEarthTexture() {
     ],
   ]
 
+  ctx.fillStyle = '#3cab76'
   for (const poly of continents) {
     ctx.beginPath()
     poly.forEach(([x, y], i) => {
@@ -96,7 +105,19 @@ function createEarthTexture() {
     ctx.fill()
   }
 
-  ctx.strokeStyle = 'rgba(245, 196, 81, 0.12)'
+  ctx.strokeStyle = 'rgba(180, 255, 210, 0.4)'
+  ctx.lineWidth = 2
+  for (const poly of continents) {
+    ctx.beginPath()
+    poly.forEach(([x, y], i) => {
+      if (i === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    })
+    ctx.closePath()
+    ctx.stroke()
+  }
+
+  ctx.strokeStyle = 'rgba(245, 196, 81, 0.16)'
   ctx.lineWidth = 1
   for (let i = 0; i < 12; i++) {
     const y = (i / 12) * canvas.height
@@ -113,8 +134,8 @@ function createEarthTexture() {
     ctx.stroke()
   }
 
-  ctx.fillStyle = 'rgba(245, 196, 81, 0.35)'
-  for (let i = 0; i < 180; i++) {
+  ctx.fillStyle = 'rgba(255, 230, 150, 0.45)'
+  for (let i = 0; i < 220; i++) {
     const x = Math.random() * canvas.width
     const y = 180 + Math.random() * 640
     const r = Math.random() * 1.8
@@ -165,15 +186,17 @@ function RegionMarker({
   radius,
   selected,
   onSelect,
+  controlsRef,
 }: {
   region: LotteryRegion
   radius: number
   selected: boolean
   onSelect: (id: string) => void
+  controlsRef: RefObject<OrbitControlsImpl | null>
 }) {
   const group = useRef<THREE.Group>(null)
   const pos = useMemo(
-    () => latLngToVector3(region.lat, region.lng, radius + 0.02),
+    () => latLngToVector3(region.lat, region.lng, radius + 0.045),
     [region.lat, region.lng, radius],
   )
   const color = region.accent
@@ -184,34 +207,44 @@ function RegionMarker({
     group.current.scale.setScalar(selected ? pulse * 1.25 : pulse)
   })
 
+  const select = (e: { stopPropagation: () => void }) => {
+    e.stopPropagation()
+    onSelect(region.id)
+  }
+
   return (
     <group ref={group} position={pos}>
       <mesh
-        onClick={(e) => {
+        onPointerDown={select}
+        onClick={select}
+        onPointerOver={(e) => {
           e.stopPropagation()
-          onSelect(region.id)
-        }}
-        onPointerOver={() => {
           document.body.style.cursor = 'pointer'
+          if (controlsRef.current) controlsRef.current.enabled = false
         }}
         onPointerOut={() => {
           document.body.style.cursor = 'auto'
+          if (controlsRef.current) controlsRef.current.enabled = true
         }}
       >
-        <sphereGeometry args={[0.038, 16, 16]} />
+        <sphereGeometry args={[0.1, 16, 16]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+      <mesh raycast={() => null}>
+        <sphereGeometry args={[0.045, 16, 16]} />
         <meshStandardMaterial
           color={color}
           emissive={color}
-          emissiveIntensity={selected ? 2.2 : 1.4}
+          emissiveIntensity={selected ? 2.4 : 1.6}
           toneMapped={false}
         />
       </mesh>
-      <mesh rotation={[Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.055, 0.078, 32]} />
+      <mesh rotation={[Math.PI / 2, 0, 0]} raycast={() => null}>
+        <ringGeometry args={[0.06, 0.085, 32]} />
         <meshBasicMaterial
           color={color}
           transparent
-          opacity={selected ? 0.9 : 0.45}
+          opacity={selected ? 0.95 : 0.5}
           side={THREE.DoubleSide}
           depthWrite={false}
         />
@@ -224,10 +257,12 @@ function Earth({
   reducedMotion,
   selectedId,
   onSelect,
+  controlsRef,
 }: {
   reducedMotion: boolean
   selectedId: string | null
   onSelect: (id: string) => void
+  controlsRef: RefObject<OrbitControlsImpl | null>
 }) {
   const group = useRef<THREE.Group>(null)
   const radius = 1.6
@@ -244,10 +279,10 @@ function Earth({
         <sphereGeometry args={[radius, 64, 64]} />
         <meshStandardMaterial
           map={texture}
-          roughness={0.72}
-          metalness={0.18}
-          emissive="#041018"
-          emissiveIntensity={0.35}
+          roughness={0.65}
+          metalness={0.12}
+          emissive="#0a2030"
+          emissiveIntensity={0.25}
         />
       </mesh>
       <Atmosphere radius={radius} />
@@ -258,6 +293,7 @@ function Earth({
           radius={radius}
           selected={selectedId === region.id}
           onSelect={onSelect}
+          controlsRef={controlsRef}
         />
       ))}
     </group>
@@ -273,12 +309,14 @@ function Scene({
   selectedId: string | null
   onSelect: (id: string) => void
 }) {
+  const controlsRef = useRef<OrbitControlsImpl | null>(null)
+
   return (
     <>
-      <ambientLight intensity={0.45} />
-      <directionalLight position={[5, 3, 5]} intensity={1.35} color="#fff6e0" />
-      <pointLight position={[-4, -2, -3]} intensity={0.6} color="#4FC3F7" />
-      <pointLight position={[2, 4, -2]} intensity={0.35} color="#F5C451" />
+      <ambientLight intensity={0.55} />
+      <directionalLight position={[5, 3, 5]} intensity={1.55} color="#fff6e0" />
+      <pointLight position={[-4, -2, -3]} intensity={0.75} color="#4FC3F7" />
+      <pointLight position={[2, 4, -2]} intensity={0.45} color="#F5C451" />
       {!reducedMotion && (
         <Stars
           radius={80}
@@ -294,8 +332,10 @@ function Scene({
         reducedMotion={reducedMotion}
         selectedId={selectedId}
         onSelect={onSelect}
+        controlsRef={controlsRef}
       />
       <OrbitControls
+        ref={controlsRef}
         enablePan={false}
         enableZoom={false}
         rotateSpeed={0.45}

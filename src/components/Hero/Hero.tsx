@@ -98,6 +98,21 @@ export function Hero() {
         >
           <Globe selectedId={selectedId} onSelect={setSelectedId} />
         </Suspense>
+        <div className="hero__markers" role="list" aria-label="Lottery regions">
+          {lotteryRegions.map((region) => (
+            <button
+              key={region.id}
+              type="button"
+              role="listitem"
+              className={`hero__marker-btn ${selectedId === region.id ? 'is-active' : ''}`}
+              style={{ '--accent': region.accent } as React.CSSProperties}
+              onClick={() => setSelectedId(region.id)}
+            >
+              <span className="hero__marker-dot" />
+              {region.region}
+            </button>
+          ))}
+        </div>
       </motion.div>
     </section>
   )
