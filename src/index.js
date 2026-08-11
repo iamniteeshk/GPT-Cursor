@@ -25,6 +25,7 @@ import {
   writeCursorDump,
 } from "./cursor-agent.js";
 import { denyBrowserPermissions, dismissBlockingUi, installDialogHandlers } from "./popups.js";
+import { describeSecrets } from "./secrets.js";
 
 const checkLoginOnly = process.argv.includes("--check-login");
 
@@ -146,6 +147,7 @@ async function main() {
   console.log("GPT ↔ Cursor automation");
   console.log(`GPT:    ${config.gptUrl}`);
   console.log(`Cursor: ${config.cursorUrl}`);
+  console.log("Secrets:", describeSecrets());
 
   await ensureArtifactsDir();
   const { context } = await connectBrowser();

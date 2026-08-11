@@ -1,8 +1,8 @@
 import { sleep } from "./browser.js";
+import { hasTelegramSecrets, secrets } from "./secrets.js";
 
 /**
  * Soft overlays we can dismiss safely.
- * Prefer decline / "not now" / "don't ask again" — never enable notifications.
  */
 const DISMISS_BUTTON_NAMES = [
   /^don't ask again$/i,
@@ -13,7 +13,7 @@ const DISMISS_BUTTON_NAMES = [
   /^got it$/i,
   /^maybe later$/i,
   /^skip$/i,
-  /^reject$/i,
+  /^reject all$/i,
   /^deny$/i,
   /^decline$/i,
   /^continue without$/i,
@@ -24,61 +24,37 @@ const DISMISS_TEXT_SNIPPETS = [
   /enable notifications/i,
   /get notified when your agent is done/i,
   /turn on notifications/i,
-  /stay signed in/i,
-  /accept (all )?cookies/i,
   /we use cookies/i,
 ];
 
-/** Popups/forms that need YOU — script reports and waits. */
-const USER_ACTION_PATTERNS = [
+/** Only true hard blockers that should pause the loop. */
+const HARD_BLOCKERS = [
   {
     kind: "github_auth",
-    re: /refresh\/?reauthorize the github integration|invalid username or token|connect github|authorize github|github.*(login|sign.?in|permission)/i,
+    re: /refresh\/?reauthorize the github integration|invalid username or token/i,
     message:
       "ACTION NEEDED: GitHub auth/token. Fix GitHub integration in the Chrome Cursor window.",
-  },
-  {
-    kind: "telegram_bot_token",
-    re: /telegram.*bot.?token|bot.?token.*telegram|enter (your )?bot token|BOT_TOKEN/i,
-    message:
-      "ACTION NEEDED: Telegram Bot Token. Paste it in the Chrome popup/form, then continue.",
-  },
-  {
-    kind: "telegram_chat_id",
-    re: /telegram.*chat.?id|chat.?id.*telegram|enter (your )?chat id|CHAT_ID/i,
-    message:
-      "ACTION NEEDED: Telegram Chat ID. Paste it in the Chrome popup/form, then continue.",
-  },
-  {
-    kind: "api_secret",
-    re: /enter (your )?(api[_ ]?key|secret|access token)|needs? (a |your )?(api[_ ]?key|secret|token)|provide (your )?(api[_ ]?key|secret|token)/i,
-    message:
-      "ACTION NEEDED: API key / secret / token field is waiting. Fill it in Chrome.",
-  },
-  {
-    kind: "env_setup",
-    re: /set up cloud agents|install script|start script|environment setup|missing (required )?secret/i,
-    message:
-      "ACTION NEEDED: Cursor environment/setup UI needs your input in Chrome.",
   },
   {
     kind: "agent_blocked",
     re: /agent is blocked/i,
     message:
-      'ACTION NEEDED: Cursor shows "Agent is blocked". Resolve the blocker in Chrome (often GitHub/env).',
+      'ACTION NEEDED: Cursor shows "Agent is blocked". Resolve it in Chrome (often GitHub/env).',
   },
   {
     kind: "cloudflare",
     re: /verify you are human/i,
     message: "ACTION NEEDED: Cloudflare human check. Complete it in Chrome.",
   },
-  {
-    kind: "permissions",
-    re: /allow.*access|grant permission|requesting permission/i,
-    message:
-      "ACTION NEEDED: A permission prompt needs your choice in Chrome (Allow/Deny).",
-  },
 ];
+
+const warnedOnce = new Set();
+
+function warnOnce(key, message) {
+  if (warnedOnce.has(key)) return;
+  warnedOnce.add(key);
+  console.warn(`\n⚠️  ${message}\n`);
+}
 
 export async function installDialogHandlers(page) {
   if (page.__gptCursorDialogHandlersInstalled) return;
@@ -107,7 +83,7 @@ export async function denyBrowserPermissions(context) {
       await context.grantPermissions([], { origin }).catch(() => {});
     }
   } catch {
-    // CDP contexts sometimes restrict permission APIs; ignore.
+    // ignore
   }
 }
 
@@ -127,15 +103,8 @@ async function clickIfVisible(locator, label) {
 async function dismissByButtonNames(page) {
   let dismissed = 0;
   for (const name of DISMISS_BUTTON_NAMES) {
-    // Never auto-click Cancel while a user-action form may be open —
-    // Cancel is handled only inside known soft notification dialogs.
-    if (/^cancel$/i.test(String(name))) continue;
-
     const btn = page.getByRole("button", { name });
     if (await clickIfVisible(btn, `button ${name}`)) dismissed += 1;
-
-    const link = page.getByRole("link", { name });
-    if (await clickIfVisible(link, `link ${name}`)) dismissed += 1;
   }
   return dismissed;
 }
@@ -158,6 +127,10 @@ async function dismissKnownModals(page) {
     }
   }
 
+  // Prefer Deny/Block on browser-ish permission cards if visible as page UI.
+  const permissionDeny = page.getByRole("button", { name: /^(deny|block|not now)$/i });
+  if (await clickIfVisible(permissionDeny, "permission deny")) dismissed += 1;
+
   const dialogs = page.locator('[role="dialog"], [role="alertdialog"], [aria-modal="true"]');
   const dialogCount = await dialogs.count().catch(() => 0);
   for (let i = 0; i < dialogCount; i += 1) {
@@ -165,27 +138,19 @@ async function dismissKnownModals(page) {
     if (!(await dialog.isVisible().catch(() => false))) continue;
 
     const text = ((await dialog.innerText().catch(() => "")) || "").trim();
+    if (HARD_BLOCKERS.some((p) => p.re.test(text))) continue;
+    if (/bot.?token|chat.?id|telegram/i.test(text)) continue;
 
-    // Do NOT auto-close dialogs that ask for secrets / tokens / GitHub.
-    const needsUser = USER_ACTION_PATTERNS.some((p) => p.re.test(text));
-    if (needsUser) continue;
-
-    const looksBlocking = DISMISS_TEXT_SNIPPETS.some((re) => re.test(text));
+    const looksSoft = DISMISS_TEXT_SNIPPETS.some((re) => re.test(text));
     const closeCandidates = [
       dialog.getByRole("button", {
-        name: /don't ask again|not now|no thanks|dismiss|close|got it|skip/i,
+        name: /don't ask again|not now|no thanks|dismiss|close|got it|skip|deny|block/i,
       }),
       dialog.locator('button[aria-label*="Close" i], button[aria-label*="Dismiss" i]'),
-      dialog.locator('button:has-text("×"), button:has-text("✕")'),
     ];
 
     for (const candidate of closeCandidates) {
-      if (
-        await clickIfVisible(
-          candidate,
-          looksBlocking ? "blocking dialog" : "dialog close"
-        )
-      ) {
+      if (await clickIfVisible(candidate, looksSoft ? "soft dialog" : "dialog close")) {
         dismissed += 1;
         break;
       }
@@ -201,7 +166,6 @@ async function dismissCookieBanners(page) {
     page.getByRole("button", { name: /reject all/i }),
     page.getByRole("button", { name: /only necessary|essential only/i }),
     page.getByRole("button", { name: /accept all/i }),
-    page.getByRole("button", { name: /accept cookies/i }),
   ];
   for (const btn of ordered) {
     if (await clickIfVisible(btn, "cookie banner")) {
@@ -212,13 +176,73 @@ async function dismissCookieBanners(page) {
   return dismissed;
 }
 
-function matchUserAction(text) {
-  for (const pattern of USER_ACTION_PATTERNS) {
-    if (pattern.re.test(text)) {
-      return { kind: pattern.kind, message: pattern.message };
-    }
+async function fillInput(locator, value) {
+  const el = locator.first();
+  if (!(await el.isVisible().catch(() => false))) return false;
+  await el.click({ timeout: 2000 });
+  await el.fill("");
+  await el.fill(value);
+  return true;
+}
+
+/**
+ * If Telegram fields appear and local secrets exist, autofill.
+ * If secrets are missing, log once and proceed (no pause).
+ */
+export async function maybeAutofillTelegram(page) {
+  const bodyText = (
+    (await page.locator("body").innerText().catch(() => "")) || ""
+  ).slice(0, 12000);
+
+  const asksTelegram =
+    /telegram/i.test(bodyText) &&
+    (/bot.?token/i.test(bodyText) || /chat.?id/i.test(bodyText));
+
+  const tokenInput = page.locator(
+    'input[placeholder*="bot token" i], input[name*="bot" i][name*="token" i], input[placeholder*="token" i]'
+  );
+  const chatInput = page.locator(
+    'input[placeholder*="chat id" i], input[name*="chat" i], input[placeholder*="chat" i]'
+  );
+
+  const tokenVisible = await tokenInput.first().isVisible().catch(() => false);
+  const chatVisible = await chatInput.first().isVisible().catch(() => false);
+
+  if (!asksTelegram && !tokenVisible && !chatVisible) return { handled: false };
+
+  if (!hasTelegramSecrets()) {
+    warnOnce(
+      "telegram-missing",
+      "Telegram fields detected, but no local secrets found. Proceeding without autofill.\n" +
+        "   Add them to .env (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)\n" +
+        "   or secrets.local.json — see secrets.local.json.example"
+    );
+    return { handled: false, missing: true };
   }
-  return null;
+
+  let filled = 0;
+  if (tokenVisible || asksTelegram) {
+    if (await fillInput(tokenInput, secrets.telegramBotToken)) filled += 1;
+  }
+  if (chatVisible || asksTelegram) {
+    if (await fillInput(chatInput, secrets.telegramChatId)) filled += 1;
+  }
+
+  if (filled > 0) {
+    console.log(`Autofilled ${filled} Telegram field(s) from local secrets.`);
+    const submit = page.getByRole("button", {
+      name: /^(save|submit|continue|confirm|done|add)$/i,
+    });
+    await clickIfVisible(submit, "telegram submit");
+    await sleep(800);
+    return { handled: true, filled };
+  }
+
+  warnOnce(
+    "telegram-no-inputs",
+    "Telegram mentioned on page and secrets exist, but no input fields found to autofill. Proceeding."
+  );
+  return { handled: false };
 }
 
 export async function detectHardBlocker(page) {
@@ -226,38 +250,23 @@ export async function detectHardBlocker(page) {
     (await page.locator("body").innerText().catch(() => "")) || ""
   ).slice(0, 12000);
 
-  const fromBody = matchUserAction(bodyText);
-  if (fromBody) return fromBody;
+  for (const pattern of HARD_BLOCKERS) {
+    if (pattern.re.test(bodyText)) {
+      return { kind: pattern.kind, message: pattern.message };
+    }
+  }
 
-  // Dialog-only scan (more precise for token forms).
   const dialogs = page.locator('[role="dialog"], [role="alertdialog"], [aria-modal="true"]');
   const dialogCount = await dialogs.count().catch(() => 0);
   for (let i = 0; i < dialogCount; i += 1) {
     const dialog = dialogs.nth(i);
     if (!(await dialog.isVisible().catch(() => false))) continue;
     const text = ((await dialog.innerText().catch(() => "")) || "").trim();
-    const hit = matchUserAction(text);
-    if (hit) return hit;
-  }
-
-  // Password/token-looking inputs in a visible modal.
-  const secretInput = page.locator(
-    'input[type="password"], input[name*="token" i], input[placeholder*="token" i], input[placeholder*="chat id" i], input[placeholder*="bot" i]'
-  );
-  if (await secretInput.first().isVisible().catch(() => false)) {
-    const nearby = (
-      (await secretInput.first().evaluate((el) => el.closest("[role=dialog], form, body")?.innerText || "").catch(
-        () => ""
-      )) || ""
-    ).slice(0, 2000);
-    const hit = matchUserAction(nearby);
-    return (
-      hit || {
-        kind: "secret_input",
-        message:
-          "ACTION NEEDED: A secret/token input is visible in Chrome. Fill it (e.g. Telegram bot token / chat ID), then continue.",
+    for (const pattern of HARD_BLOCKERS) {
+      if (pattern.re.test(text)) {
+        return { kind: pattern.kind, message: pattern.message };
       }
-    );
+    }
   }
 
   return null;
@@ -268,36 +277,16 @@ export async function detectHardBlocker(page) {
  */
 export async function dismissBlockingUi(page, { label = "page" } = {}) {
   await installDialogHandlers(page);
-
-  // Report user-action blockers BEFORE dismissing anything that might close them.
-  const blockerFirst = await detectHardBlocker(page);
+  await maybeAutofillTelegram(page);
 
   let dismissed = 0;
-  if (!blockerFirst) {
-    dismissed += await dismissKnownModals(page);
-    dismissed += await dismissByButtonNames(page);
-    dismissed += await dismissCookieBanners(page);
+  dismissed += await dismissKnownModals(page);
+  dismissed += await dismissByButtonNames(page);
+  dismissed += await dismissCookieBanners(page);
 
-    if (dismissed === 0) {
-      const dialogVisible = await page
-        .locator('[role="dialog"], [role="alertdialog"], [aria-modal="true"]')
-        .first()
-        .isVisible()
-        .catch(() => false);
-      if (dialogVisible) {
-        // Only Escape soft dialogs; re-check blocker after.
-        await page.keyboard.press("Escape").catch(() => {});
-        await sleep(300);
-        dismissed += 1;
-        console.log(`Sent Escape to clear modal on ${label}`);
-      }
-    }
-  }
-
-  const blocker = blockerFirst || (await detectHardBlocker(page));
+  const blocker = await detectHardBlocker(page);
   if (blocker) {
-    console.warn(`\n⚠️  ${blocker.message}`);
-    console.warn("   Script is PAUSED on this until you finish it in Chrome.\n");
+    warnOnce(`blocker:${blocker.kind}`, `${blocker.message}\n   Script pauses only for this hard blocker.`);
   } else if (dismissed > 0) {
     console.log(`Cleared ${dismissed} overlay action(s) on ${label}`);
   }

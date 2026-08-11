@@ -66,9 +66,9 @@ export async function sendPromptToCursor(page, prompt) {
   await dismissBlockingUi(page, { label: "Cursor" });
   const blocker = await detectHardBlocker(page);
   if (blocker) {
-    console.warn(`Cursor blocker before send: ${blocker.message}`);
-    console.warn("Waiting for you to clear it in Chrome (up to login wait timeout)...");
-    await waitUntil("Cursor blocker cleared", config.loginWaitMs, async () => {
+    console.warn(`Hard blocker before send: ${blocker.message}`);
+    console.warn("Waiting for you to clear it in Chrome...");
+    await waitUntil("Cursor hard blocker cleared", config.loginWaitMs, async () => {
       await dismissBlockingUi(page, { label: "Cursor" });
       return !(await detectHardBlocker(page));
     });
@@ -94,7 +94,11 @@ export async function sendPromptToCursor(page, prompt) {
 
   await sleep(400);
 
-  const send = page.getByRole("button", { name: /send|run|submit/i }).first();
+  // Prefer an explicit Send control; avoid matching generic "Run security audit" buttons.
+  const send = page
+    .getByRole("button", { name: /^(send|submit)$/i })
+    .or(page.locator('button[data-testid*="send" i], button[aria-label*="Send" i]'))
+    .first();
   if (await send.isVisible().catch(() => false)) {
     await send.click();
   } else {

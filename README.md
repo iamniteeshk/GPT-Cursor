@@ -62,10 +62,35 @@ SYNC_PROFILE=0 bash scripts/start-chrome.sh
 
 Override in `.env` if needed.
 
+## Telegram secrets (optional)
+
+Store locally in either place (never commit real tokens):
+
+**.env**
+```env
+TELEGRAM_BOT_TOKEN=123456:ABC...
+TELEGRAM_CHAT_ID=987654321
+```
+
+**or `secrets.local.json`** (copy from example):
+```bash
+cp secrets.local.json.example secrets.local.json
+```
+
+```json
+{
+  "telegramBotToken": "123456:ABC...",
+  "telegramChatId": "987654321"
+}
+```
+
+If Telegram fields appear and secrets exist → autofill.  
+If secrets are missing → log once and **proceed as usual** (no pause).
+
 ## Notes
 
 - Keep that Chrome window open while the script runs.
-- Soft popups (notifications, cookies, "Not now" / "Don't ask again") are auto-dismissed.
-- Hard blockers that need you (GitHub auth, Telegram bot token / chat ID, secrets, Cloudflare, "Agent is blocked") are **reported in the terminal** and the script **pauses** until you finish them in Chrome.
+- Soft popups (notifications, cookies, "Not now") are auto-dismissed.
+- Only hard blockers pause the loop: **Agent is blocked**, GitHub token errors, Cloudflare.
 - Cursor wait default is **40 minutes**; progress logs every minute.
 - Artifacts are saved under `artifacts/`.
