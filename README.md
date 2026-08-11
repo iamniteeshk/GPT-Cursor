@@ -66,5 +66,6 @@ Override in `.env` if needed.
 
 - Keep that Chrome window open while the script runs.
 - Soft popups (notifications, cookies, "Not now" / "Don't ask again") are auto-dismissed.
-- Hard blockers (Cursor "Agent is blocked", GitHub reauth, Cloudflare) are detected; the script waits and logs what to fix in Chrome.
+- Hard blockers that need you (GitHub auth, Telegram bot token / chat ID, secrets, Cloudflare, "Agent is blocked") are **reported in the terminal** and the script **pauses** until you finish them in Chrome.
+- Cursor wait default is **40 minutes**; progress logs every minute.
 - Artifacts are saved under `artifacts/`.

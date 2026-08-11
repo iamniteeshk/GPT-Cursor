@@ -27,7 +27,6 @@ export async function isCursorLoggedIn(page) {
   const loginButton = page.getByRole("button", { name: /log ?in|sign in/i }).first();
   if (await loginButton.isVisible().catch(() => false)) return false;
 
-  // Cloudflare interstitial
   const human = page.getByText(/verify you are human/i).first();
   if (await human.isVisible().catch(() => false)) return false;
 
@@ -68,8 +67,8 @@ export async function sendPromptToCursor(page, prompt) {
   const blocker = await detectHardBlocker(page);
   if (blocker) {
     console.warn(`Cursor blocker before send: ${blocker.message}`);
-    console.warn("Waiting up to 10 minutes for you to clear it in Chrome...");
-    await waitUntil("Cursor blocker cleared", 600_000, async () => {
+    console.warn("Waiting for you to clear it in Chrome (up to login wait timeout)...");
+    await waitUntil("Cursor blocker cleared", config.loginWaitMs, async () => {
       await dismissBlockingUi(page, { label: "Cursor" });
       return !(await detectHardBlocker(page));
     });
@@ -95,10 +94,7 @@ export async function sendPromptToCursor(page, prompt) {
 
   await sleep(400);
 
-  // Prefer an explicit Send/Run control; otherwise Enter.
-  const send = page
-    .getByRole("button", { name: /send|run|submit/i })
-    .first();
+  const send = page.getByRole("button", { name: /send|run|submit/i }).first();
   if (await send.isVisible().catch(() => false)) {
     await send.click();
   } else {
@@ -107,30 +103,52 @@ export async function sendPromptToCursor(page, prompt) {
 }
 
 export async function waitForCursorReply(page, previousText) {
-  let blockerAnnunciated = false;
+  let lastActionKind = "";
+  let lastProgressLog = 0;
+  const started = Date.now();
+
   await waitUntil("Cursor agent reply", config.cursorReplyTimeoutMs, async () => {
     await dismissBlockingUi(page, { label: "Cursor" });
 
     const blocker = await detectHardBlocker(page);
     if (blocker) {
-      if (!blockerAnnunciated) {
+      if (blocker.kind !== lastActionKind) {
+        lastActionKind = blocker.kind;
         console.warn(blocker.message);
-        console.warn("Script will keep waiting while soft popups are auto-dismissed.");
-        blockerAnnunciated = true;
+        console.warn("Paused — finish that in Chrome, then the loop continues.");
       }
-      // Soft-wait: user may fix GitHub auth; keep polling instead of failing immediately.
       return false;
     }
+    lastActionKind = "";
 
+    const done = await isCursorDone(page);
     const busy = await isCursorBusy(page);
-    if (busy) return false;
-
     const text = await getLatestCursorText(page).catch(() => "");
+
+    const now = Date.now();
+    if (now - lastProgressLog > 60_000) {
+      lastProgressLog = now;
+      const mins = Math.round((now - started) / 60000);
+      console.log(
+        `… still waiting on Cursor (${mins}m). busy=${busy} doneSignal=${done} textChars=${text.length}`
+      );
+    }
+
+    // Prefer explicit done signals even if leftover "running" text exists in the transcript.
+    if (done && text && (!previousText || text !== previousText)) {
+      await sleep(2500);
+      const again = await getLatestCursorText(page).catch(() => "");
+      const stillDone = await isCursorDone(page);
+      const againBusy = await isCursorBusy(page);
+      if (again === text && stillDone && !againBusy) return true;
+      if (again === text && stillDone) return true;
+    }
+
+    if (busy) return false;
     if (!text) return false;
     if (previousText && text === previousText) return false;
 
-    // Stable for one poll.
-    await sleep(2000);
+    await sleep(3000);
     await dismissBlockingUi(page, { label: "Cursor" });
     const again = await getLatestCursorText(page).catch(() => "");
     const stillBusy = await isCursorBusy(page);
@@ -138,24 +156,64 @@ export async function waitForCursorReply(page, previousText) {
   });
 }
 
+/**
+ * Avoid matching transcript words like "running locally".
+ * Only treat status-chrome / stop button as busy.
+ */
 async function isCursorBusy(page) {
-  const patterns = [
-    /thinking/i,
-    /running/i,
-    /working/i,
-    /generating/i,
-    /in progress/i,
-    /starting/i,
+  const stop = page.getByRole("button", { name: /^(stop|cancel)$/i }).first();
+  if (await stop.isVisible().catch(() => false)) return true;
+
+  const statusSelectors = [
+    '[data-testid*="status"]',
+    '[data-testid*="agent-status"]',
+    '[aria-live="polite"]',
+    '[aria-live="assertive"]',
   ];
 
-  for (const pattern of patterns) {
+  const busyRe =
+    /\b(thinking|working|generating|in progress|running start script|starting agent|agent is running)\b/i;
+
+  for (const selector of statusSelectors) {
+    const nodes = page.locator(selector);
+    const count = await nodes.count().catch(() => 0);
+    for (let i = 0; i < Math.min(count, 8); i += 1) {
+      const text = ((await nodes.nth(i).innerText().catch(() => "")) || "").trim();
+      if (busyRe.test(text)) return true;
+    }
+  }
+
+  // Narrow visible status lines near the top of the agent UI (not full transcript).
+  const headerBusy = page
+    .getByText(
+      /^(Thinking|Working|Generating|Running start script|Starting|In progress)\b/i
+    )
+    .first();
+  if (await headerBusy.isVisible().catch(() => false)) return true;
+
+  const workedFor = page.getByText(/\bWorked for\b/i).first();
+  if (await workedFor.isVisible().catch(() => false)) {
+    // Finished agents often keep "Worked for Xm" visible — not busy.
+    return false;
+  }
+
+  return false;
+}
+
+async function isCursorDone(page) {
+  const donePatterns = [
+    /\bWorked for\b/i,
+    /\bAgent (completed|finished)\b/i,
+    /\bCreate [Pp]ull [Rr]equest\b/,
+    /\bPull request\b/,
+    /\bPR ready\b/i,
+    /\bAutomation Done\b/,
+  ];
+
+  for (const pattern of donePatterns) {
     const el = page.getByText(pattern).first();
     if (await el.isVisible().catch(() => false)) return true;
   }
-
-  const stop = page.getByRole("button", { name: /stop|cancel/i }).first();
-  if (await stop.isVisible().catch(() => false)) return true;
-
   return false;
 }
 
@@ -178,7 +236,6 @@ export async function getLatestCursorText(page) {
     }
   }
 
-  // Fallback: grab main panel text, truncated.
   const main = page.locator("main").first();
   if (await main.isVisible().catch(() => false)) {
     return (await main.innerText()).trim();
@@ -202,7 +259,6 @@ export async function captureCursorImages(page, loopIndex) {
     if (!box || box.width < 40 || box.height < 40) continue;
 
     const src = (await img.getAttribute("src")) || "";
-    // Skip tiny icons / avatars.
     if (/avatar|icon|logo|favicon/i.test(src)) continue;
 
     const file = artifactPath(`cursor-loop-${loopIndex}-img-${i + 1}.png`);
@@ -210,11 +266,10 @@ export async function captureCursorImages(page, loopIndex) {
       await img.screenshot({ path: file });
       saved.push(file);
     } catch {
-      // Ignore individual image capture failures.
+      // ignore
     }
   }
 
-  // Also capture a full response screenshot as a visual summary.
   const summary = artifactPath(`cursor-loop-${loopIndex}-response.png`);
   await page.screenshot({ path: summary, fullPage: false });
   saved.push(summary);
