@@ -16,11 +16,11 @@ function required(name, fallback) {
 export const config = {
   gptUrl: required(
     "GPT_URL",
-    "https://chatgpt.com/c/6a7a07c4-635c-83ee-adf7-d03cb6bbf421"
+    "https://chatgpt.com/c/6a7b03a4-1650-83ee-aa2f-7cf42012dc5d"
   ),
   cursorUrl: required(
     "CURSOR_URL",
-    "https://cursor.com/agents/bc-a815a9ed-9dda-47b4-96db-e0d48dad0c95"
+    "https://cursor.com/agents/bc-bcf89552-31d7-414b-af4c-c5ba7443f517"
   ),
   cdpUrl: process.env.CDP_URL || "http://127.0.0.1:9222",
   stopPhrase: process.env.STOP_PHRASE || "Automation Done",

@@ -56,8 +56,8 @@ SYNC_PROFILE=0 bash scripts/start-chrome.sh
 
 ## Default URLs / stop phrase
 
-- GPT: `https://chatgpt.com/c/6a7a07c4-635c-83ee-adf7-d03cb6bbf421`
-- Cursor: `https://cursor.com/agents/bc-a815a9ed-9dda-47b4-96db-e0d48dad0c95`
+- GPT: `https://chatgpt.com/c/6a7b03a4-1650-83ee-aa2f-7cf42012dc5d`
+- Cursor: `https://cursor.com/agents/bc-bcf89552-31d7-414b-af4c-c5ba7443f517`
 - Stops when GPT replies with: `Automation Done`
 
 Override in `.env` if needed.
