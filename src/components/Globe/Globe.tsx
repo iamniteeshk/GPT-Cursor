@@ -238,10 +238,11 @@ function Earth({
         <meshStandardMaterial
           map={colorMap}
           roughnessMap={specularMap}
-          roughness={0.62}
-          metalness={0.08}
-          emissive="#040912"
-          emissiveIntensity={0.12}
+          roughness={0.72}
+          metalness={0.04}
+          emissive="#0a1520"
+          emissiveIntensity={0.22}
+          toneMapped={false}
         />
       </mesh>
       {selected && (
@@ -349,10 +350,11 @@ function Scene({
   return (
     <>
       <CameraFraming mobile={mobile} shortViewport={shortViewport} />
-      <ambientLight intensity={0.32} />
-      <directionalLight position={[5.5, 2.4, 3.2]} intensity={1.85} color="#fff4e0" />
-      <directionalLight position={[-3.5, -1.2, -2]} intensity={0.4} color="#4aa8d8" />
-      <pointLight position={[2, 3, -2.5]} intensity={0.35} color="#F5C451" />
+      <ambientLight intensity={0.55} />
+      <hemisphereLight args={['#b8d4e8', '#0a1622', 0.55]} />
+      <directionalLight position={[5.2, 2.8, 4]} intensity={1.35} color="#fff8ea" />
+      <directionalLight position={[-3.2, -0.8, -2.2]} intensity={0.35} color="#5eb0d8" />
+      <pointLight position={[2, 3, -2.5]} intensity={0.28} color="#F5C451" />
       {!reducedMotion && (
         <Stars
           radius={100}
@@ -549,7 +551,7 @@ export function Globe({
             onCreated={({ gl }) => {
               gl.setClearColor(0x000000, 0)
               gl.toneMapping = THREE.ACESFilmicToneMapping
-              gl.toneMappingExposure = 1.05
+              gl.toneMappingExposure = 1.15
             }}
           >
             <Scene

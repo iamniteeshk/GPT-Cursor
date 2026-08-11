@@ -7,8 +7,8 @@ import * as THREE from 'three'
 type LandTopology = Topology<{ land: GeometryCollection }>
 type CountriesTopology = Topology<{ countries: GeometryCollection }>
 
-const COLOR_URL = '/textures/earth-color.png'
-const SPECULAR_URL = '/textures/earth-specular.png'
+const COLOR_URL = '/textures/earth-color.png?v=4'
+const SPECULAR_URL = '/textures/earth-specular.png?v=4'
 
 let cachedMaps: {
   color: THREE.Texture
@@ -104,16 +104,16 @@ export async function createEarthMaps(
   const path = geoPath(projection, ctx)
   const spath = geoPath(projection, sctx)
 
-  // Muted slate-olive land — not bright UI green
+  // Muted but readable slate-sage land (holds up under tone mapping)
   ctx.beginPath()
   path(land)
-  ctx.fillStyle = '#3f4d42'
+  ctx.fillStyle = '#6d7f62'
   ctx.fill()
 
   // Soft interior variation
   ctx.beginPath()
   path(land)
-  ctx.fillStyle = 'rgba(72, 88, 74, 0.45)'
+  ctx.fillStyle = 'rgba(92, 110, 82, 0.35)'
   ctx.fill()
 
   const img = ctx.getImageData(0, 0, width, height)
@@ -124,34 +124,34 @@ export async function createEarthMaps(
     const g = data[i + 1]
     const b = data[i + 2]
     // Land pixels are greener/olive than ocean
-    if (g > r + 8 && g > b + 10 && g > 55) {
-      const n = (rnd() - 0.5) * 22
-      const warm = rnd() > 0.72 ? 6 : 0
+    if (g > r + 5 && g > b + 8 && g > 70) {
+      const n = (rnd() - 0.5) * 20
+      const warm = rnd() > 0.7 ? 8 : 0
       data[i] = Math.max(0, Math.min(255, r + n + warm))
       data[i + 1] = Math.max(0, Math.min(255, g + n))
-      data[i + 2] = Math.max(0, Math.min(255, b + n * 0.45 - warm * 0.4))
+      data[i + 2] = Math.max(0, Math.min(255, b + n * 0.4 - warm * 0.3))
     }
   }
   ctx.putImageData(img, 0, 0)
 
   sctx.beginPath()
   spath(land)
-  sctx.fillStyle = '#d8d8d8'
+  sctx.fillStyle = '#d0d0d0'
   sctx.fill()
 
   // Country borders — readable silhouette without dominating
   ctx.beginPath()
   path(countries)
-  ctx.strokeStyle = 'rgba(210, 222, 214, 0.42)'
-  ctx.lineWidth = Math.max(0.85, width / 2200)
+  ctx.strokeStyle = 'rgba(232, 238, 230, 0.55)'
+  ctx.lineWidth = Math.max(1, width / 1800)
   ctx.lineJoin = 'round'
   ctx.stroke()
 
   // Coastline rim for continent recognition
   ctx.beginPath()
   path(land)
-  ctx.strokeStyle = 'rgba(168, 190, 176, 0.55)'
-  ctx.lineWidth = Math.max(1.2, width / 1600)
+  ctx.strokeStyle = 'rgba(210, 225, 205, 0.7)'
+  ctx.lineWidth = Math.max(1.4, width / 1400)
   ctx.stroke()
 
   // Secondary latitude/longitude grid
