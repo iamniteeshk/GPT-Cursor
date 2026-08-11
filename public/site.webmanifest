@@ -1,0 +1,17 @@
+{
+  "name": "LottoERY",
+  "short_name": "LottoERY",
+  "description": "ONE WORLD. MANY LOTTERIES. Global lottery apps, insights, and tools.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#030712",
+  "theme_color": "#030712",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

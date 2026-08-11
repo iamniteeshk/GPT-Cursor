@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="LottoERY">
+  <rect width="1200" height="630" fill="#030712"/>
+  <circle cx="860" cy="315" r="210" fill="none" stroke="#4fc3f7" stroke-opacity="0.25" stroke-width="2"/>
+  <circle cx="860" cy="315" r="180" fill="#0d4d6e"/>
+  <circle cx="860" cy="315" r="180" fill="none" stroke="#f5c451" stroke-opacity="0.3" stroke-width="2"/>
+  <circle cx="940" cy="230" r="10" fill="#f5c451"/>
+  <circle cx="780" cy="300" r="8" fill="#4fc3f7"/>
+  <circle cx="900" cy="390" r="7" fill="#7cffb2"/>
+  <text x="90" y="280" fill="#f5c451" font-family="Arial, Helvetica, sans-serif" font-size="64" font-weight="700" letter-spacing="6">LottoERY</text>
+  <text x="90" y="360" fill="#f4f7fb" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="700">ONE WORLD. MANY LOTTERIES.</text>
+  <text x="90" y="420" fill="#9aabc4" font-family="Arial, Helvetica, sans-serif" font-size="28">The world of lotteries. One place.</text>
+</svg>
