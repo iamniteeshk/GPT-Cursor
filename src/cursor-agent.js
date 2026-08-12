@@ -12,7 +12,10 @@ function agentIdFromUrl(url = config.cursorUrl) {
   return parts[parts.length - 1] || "";
 }
 
-/** Prefer the exact agent tab; fall back to any Cursor agents tab. */
+export function promptCompletedMarker(loopIndex) {
+  return `Prompt ${loopIndex} Completed`;
+}
+
 export async function resolveCursorPage(context, preferredPage = null) {
   const agentId = agentIdFromUrl();
   const pages = context.pages().filter((p) => {
@@ -59,7 +62,7 @@ export async function openCursorAgent(page) {
     await sleep(2500);
   } else {
     await page.bringToFront().catch(() => {});
-    await sleep(500);
+    await sleep(400);
   }
   await dismissBlockingUi(page, { label: "Cursor" });
 }
@@ -73,31 +76,24 @@ export async function isCursorLoggedIn(page) {
   ) {
     return false;
   }
-
   const loginButton = page.getByRole("button", { name: /log ?in|sign in/i }).first();
   if (await loginButton.isVisible().catch(() => false)) return false;
-
   const human = page.getByText(/verify you are human/i).first();
   if (await human.isVisible().catch(() => false)) return false;
-
-  const composer = await getComposer(page);
-  return Boolean(composer);
+  return Boolean(await getComposer(page));
 }
 
 export async function waitForCursorLogin(page) {
   console.log("Waiting for Cursor login...");
   await waitUntil("Cursor login", config.loginWaitMs, async () => {
-    if (!page.url().includes("cursor.com/agents")) {
-      await openCursorAgent(page);
-    }
+    if (!page.url().includes("cursor.com/agents")) await openCursorAgent(page);
     return isCursorLoggedIn(page);
   });
   console.log("Cursor login detected.");
 }
 
 async function getComposer(page) {
-  const scopes = [page, ...page.frames()];
-  for (const scope of scopes) {
+  for (const scope of [page, ...page.frames()]) {
     const candidates = [
       scope.locator('[data-testid="composer"], [data-testid="chat-input"]'),
       scope.locator('div[contenteditable="true"][role="textbox"]'),
@@ -113,39 +109,55 @@ async function getComposer(page) {
   return null;
 }
 
-/** Read visible text from the page and every iframe. */
 export async function collectPageText(page) {
   const chunks = [];
-
   for (const frame of page.frames()) {
     try {
       const text = await frame
         .locator("body")
         .innerText({ timeout: 2500 })
-        .catch(async () => frame.evaluate(() => document.body?.innerText || "").catch(() => ""));
+        .catch(async () =>
+          frame.evaluate(() => document.body?.innerText || "").catch(() => "")
+        );
       const trimmed = String(text || "").trim();
       if (trimmed) chunks.push(trimmed);
-    } catch {
-      // ignore frame read failures
-    }
-  }
-
-  if (!chunks.length) {
-    try {
-      const html = await page.content();
-      const rough = html
-        .replace(/<script[\s\S]*?<\/script>/gi, " ")
-        .replace(/<style[\s\S]*?<\/style>/gi, " ")
-        .replace(/<[^>]+>/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-      if (rough) chunks.push(rough.slice(-20000));
     } catch {
       // ignore
     }
   }
-
   return chunks.join("\n\n").trim();
+}
+
+/**
+ * Composer action button state:
+ * - stop  => agent is working (Send morphs into Stop)
+ * - send  => idle / ready for follow-up (work finished or not started)
+ * - unknown => cannot determine
+ */
+export async function getComposerActionState(page) {
+  for (const frame of page.frames()) {
+    const stop = frame
+      .getByRole("button", { name: /\bstop\b/i })
+      .or(frame.locator('button[aria-label*="Stop" i], button[title*="Stop" i]'))
+      .first();
+    if (await stop.isVisible().catch(() => false)) return "stop";
+  }
+
+  for (const frame of page.frames()) {
+    const send = frame
+      .getByRole("button", { name: /^(send|submit)$/i })
+      .or(
+        frame.locator(
+          'button[data-testid*="send" i], button[aria-label*="Send" i]:not([aria-label*="Stop" i])'
+        )
+      )
+      .first();
+    if (await send.isVisible().catch(() => false)) return "send";
+  }
+
+  // Follow-up composer visible usually means idle/done.
+  if (await getComposer(page)) return "send";
+  return "unknown";
 }
 
 function extractWorkedFor(text) {
@@ -153,47 +165,16 @@ function extractWorkedFor(text) {
   return matches?.length ? matches[matches.length - 1] : "";
 }
 
-async function stopButtonVisible(page) {
-  for (const frame of page.frames()) {
-    const candidates = [
-      frame.getByRole("button", { name: /\bstop\b/i }),
-      frame.locator('button[aria-label*="Stop" i]'),
-      frame.locator('button[title*="Stop" i]'),
-    ];
-    for (const loc of candidates) {
-      if (await loc.first().isVisible().catch(() => false)) return true;
-    }
-  }
-  return false;
+function hasPromptCompleted(text, loopIndex) {
+  const marker = promptCompletedMarker(loopIndex);
+  const re = new RegExp(
+    `prompt\\s*${loopIndex}\\s*completed|${marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+    "i"
+  );
+  return re.test(String(text || ""));
 }
 
-async function isCursorBusy(page, fullText = "") {
-  if (await stopButtonVisible(page)) return true;
-
-  // Active-run phrases commonly shown while cloud agents work.
-  const busyRe =
-    /\b(Thinking|Planning|Working|Generating|Running start script|Running command|Editing files|Exploring|Searching|Applying|In progress|Agent is running|Starting agent)\b/i;
-
-  // Prefer checking short status-ish lines near the top of collected text.
-  const head = String(fullText).slice(0, 2500);
-  if (/\bWorked for\b/i.test(head) && !busyRe.test(head)) {
-    // Finished banner is present and no active verb nearby.
-  }
-
-  if (busyRe.test(head)) {
-    // If "Worked for" exists and there is no Stop button, treat as not busy
-    // (transcript may contain older "Working" words).
-    if (/\bWorked for\b/i.test(fullText) && !(await stopButtonVisible(page))) {
-      return false;
-    }
-    // Without a finished marker, assume busy if those verbs appear in the live head area.
-    if (!/\bWorked for\b/i.test(fullText)) return true;
-  }
-
-  return false;
-}
-
-export async function sendPromptToCursor(page, prompt) {
+export async function sendPromptToCursor(page, prompt, loopIndex) {
   await dismissBlockingUi(page, { label: "Cursor" });
   const blocker = await detectHardBlocker(page);
   if (blocker) {
@@ -203,6 +184,16 @@ export async function sendPromptToCursor(page, prompt) {
       return !(await detectHardBlocker(page));
     });
   }
+
+  const marker = promptCompletedMarker(loopIndex);
+  const finalPrompt = [
+    prompt,
+    "",
+    "-----",
+    `When you fully finish this task, print exactly this line on its own:`,
+    marker,
+    "Then stop. Do not wait for more instructions.",
+  ].join("\n");
 
   const composer = await getComposer(page);
   if (!composer) throw new Error("Cursor composer not found. Are you logged in?");
@@ -220,7 +211,7 @@ export async function sendPromptToCursor(page, prompt) {
     el.focus();
     document.execCommand("selectAll", false);
     document.execCommand("insertText", false, value);
-  }, prompt);
+  }, finalPrompt);
 
   await sleep(400);
 
@@ -236,30 +227,29 @@ export async function sendPromptToCursor(page, prompt) {
 }
 
 /**
- * Wait until the agent finishes.
- * Done = "Worked for …" fingerprint changed since send, and Stop is gone.
+ * Wait for Cursor to finish.
+ * Primary done signal: "Prompt {n} Completed"
+ * Also watches Send↔Stop button transitions every pollIntervalMs (default 60s).
  */
-export async function waitForCursorReply(page, previousText, context = null) {
+export async function waitForCursorReply(page, previousText, context, loopIndex) {
   let active = page;
   const baselineText = await collectPageText(active);
   const baselineWorkedFor = extractWorkedFor(baselineText);
-  let sawBusy = false;
+  let sawStop = false;
   let lastActionKind = "";
   let lastProgressLog = 0;
   const started = Date.now();
+  const marker = promptCompletedMarker(loopIndex);
 
   console.log(
-    `Cursor wait baseline workedFor="${baselineWorkedFor || "none"}" textChars=${baselineText.length}`
+    `Cursor wait start | expect "${marker}" | baseline workedFor="${baselineWorkedFor || "none"}" | textChars=${baselineText.length}`
   );
 
   await waitUntil(
     "Cursor agent reply",
     config.cursorReplyTimeoutMs,
     async () => {
-      if (context) {
-        active = await resolveCursorPage(context, active);
-      }
-
+      if (context) active = await resolveCursorPage(context, active);
       await dismissBlockingUi(active, { label: "Cursor" }).catch(() => {});
 
       const blocker = await detectHardBlocker(active);
@@ -273,78 +263,87 @@ export async function waitForCursorReply(page, previousText, context = null) {
       lastActionKind = "";
 
       const fullText = await collectPageText(active);
+      const action = await getComposerActionState(active);
       const workedFor = extractWorkedFor(fullText);
-      const stopVisible = await stopButtonVisible(active);
-      const busy = stopVisible || (await isCursorBusy(active, fullText));
-      if (busy) sawBusy = true;
+      const completed = hasPromptCompleted(fullText, loopIndex);
+      const newWorkedFor = Boolean(workedFor) && workedFor !== baselineWorkedFor;
 
-      const newDone = Boolean(workedFor) && workedFor !== baselineWorkedFor;
-      const markReady = /mark as ready/i.test(fullText);
+      if (action === "stop") sawStop = true;
 
       const now = Date.now();
-      if (now - lastProgressLog > 30_000) {
+      if (now - lastProgressLog >= config.pollIntervalMs - 1000) {
         lastProgressLog = now;
         const mins = ((now - started) / 60000).toFixed(1);
         console.log(
-          `… Cursor wait ${mins}m | url=${active.url().slice(0, 80)} | frames=${active.frames().length} | busy=${busy} stop=${stopVisible} sawBusy=${sawBusy} workedFor="${workedFor || "none"}" newDone=${newDone} textChars=${fullText.length}`
+          `… Cursor ${mins}m | action=${action} sawStop=${sawStop} completed=${completed} workedFor="${workedFor || "none"}" textChars=${fullText.length}`
         );
       }
 
-      // Still running.
-      if (stopVisible) return false;
-      if (busy && !newDone) return false;
+      // Still working: Stop button is showing.
+      if (action === "stop") return false;
 
-      // Finished: new Worked-for marker (best signal on Cursor cloud agents).
-      if (newDone) {
+      // Best signal: explicit completion marker from the agent.
+      if (completed) {
+        active.__lastCursorText = pickAssistantPayload(fullText, previousText, loopIndex);
+        console.log(`Detected ${marker}`);
+        return true;
+      }
+
+      // Strong secondary: saw Stop, now Send again, and Worked for changed.
+      if (sawStop && action === "send" && newWorkedFor) {
         await sleep(2000);
         const again = await collectPageText(active);
-        const againWorked = extractWorkedFor(again);
-        if (againWorked && againWorked !== baselineWorkedFor && !(await stopButtonVisible(active))) {
-          active.__lastCursorText = pickAssistantPayload(again, previousText);
+        const againAction = await getComposerActionState(active);
+        if (
+          againAction !== "stop" &&
+          extractWorkedFor(again) &&
+          extractWorkedFor(again) !== baselineWorkedFor
+        ) {
+          active.__lastCursorText = pickAssistantPayload(again, previousText, loopIndex);
+          console.log("Detected Stop→Send transition with new Worked for.");
           return true;
         }
       }
 
-      // Fallback: Mark as ready + substantial new text, after we saw activity.
-      if ((markReady || sawBusy) && fullText.length > 400) {
-        const payload = pickAssistantPayload(fullText, previousText);
-        if (payload && payload !== previousText && payload.length > 120) {
-          // Require either newDone-ish content or at least 90s elapsed to avoid early steal.
-          if (newDone || markReady || Date.now() - started > 90_000) {
-            active.__lastCursorText = payload;
-            return true;
-          }
-        }
+      // Late fallback after long runs: Send restored + Worked for changed + substantial text.
+      if (
+        action === "send" &&
+        newWorkedFor &&
+        fullText.length > 500 &&
+        Date.now() - started > 120_000
+      ) {
+        active.__lastCursorText = pickAssistantPayload(fullText, previousText, loopIndex);
+        console.log("Fallback done: Send idle + new Worked for.");
+        return true;
       }
 
       return false;
     },
-    3000
+    config.pollIntervalMs
   );
 
   return active;
 }
 
-function pickAssistantPayload(fullText, previousText = "") {
+function pickAssistantPayload(fullText, previousText = "", loopIndex = 1) {
   const text = String(fullText || "").trim();
   if (!text) return "";
 
-  // Prefer the section around the latest "Worked for" / Changes made summary.
+  const marker = promptCompletedMarker(loopIndex);
+  const markerIdx = text.toLowerCase().lastIndexOf(marker.toLowerCase());
+  if (markerIdx >= 0) {
+    return text.slice(Math.max(0, markerIdx - 6000), markerIdx + marker.length + 200).trim();
+  }
+
   const workedIdx = text.toLowerCase().lastIndexOf("worked for");
   if (workedIdx >= 0) {
-    const slice = text.slice(Math.max(0, workedIdx - 500), workedIdx + 8000).trim();
-    if (slice.length > 80) return slice;
+    return text.slice(Math.max(0, workedIdx - 500), workedIdx + 8000).trim();
   }
 
   const changesIdx = text.toLowerCase().lastIndexOf("changes made");
-  if (changesIdx >= 0) {
-    const slice = text.slice(changesIdx, changesIdx + 8000).trim();
-    if (slice.length > 80) return slice;
-  }
+  if (changesIdx >= 0) return text.slice(changesIdx, changesIdx + 8000).trim();
 
-  const tail = text.slice(-10000).trim();
-  if (previousText && tail === previousText) return tail;
-  return tail;
+  return text.slice(-10000).trim();
 }
 
 export async function getLatestCursorText(page) {
@@ -353,7 +352,6 @@ export async function getLatestCursorText(page) {
     page.__lastCursorText = "";
     return cached;
   }
-
   const full = await collectPageText(page);
   const payload = pickAssistantPayload(full);
   if (payload.length > 40) return payload;
@@ -364,7 +362,6 @@ export async function captureCursorImages(page, loopIndex) {
   const saved = [];
   const images = page.locator("img");
   const count = await images.count().catch(() => 0);
-
   for (let i = 0; i < Math.min(count, 30); i += 1) {
     const img = images.nth(i);
     if (!(await img.isVisible().catch(() => false))) continue;
@@ -380,7 +377,6 @@ export async function captureCursorImages(page, loopIndex) {
       // ignore
     }
   }
-
   const summary = artifactPath(`cursor-loop-${loopIndex}-response.png`);
   await page.screenshot({ path: summary, fullPage: false });
   saved.push(summary);

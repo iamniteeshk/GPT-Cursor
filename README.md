@@ -1,96 +1,107 @@
 # GPT ↔ Cursor automation
 
-Automates your copy-paste loop between ChatGPT and a Cursor agent using your Chrome login cookies (**no APIs**).
+Automates the ChatGPT ↔ Cursor agent copy-paste loop using **your Chrome profile** (no APIs).
 
-## Why `~/.gpt-cursor-chrome`?
+Supports **macOS** and **Windows** (including a fresh Intel NUC).  
+This is a desktop Node + Chrome tool — it does **not** run on iOS/iPhone.
 
-Newer Chrome errors with:
+## What it does
 
-`DevTools remote debugging requires a non-default data directory`
+1. Asks you for **GPT chat URL** + **Cursor agent URL** each run
+2. Copies GPT’s prompt into Cursor
+3. Waits until Cursor finishes (Send↔Stop button + `Prompt N Completed`)
+4. Pastes Cursor text/screenshots back to GPT
+5. Repeats until GPT says `Automation Done`
 
-So the start script copies your real Chrome profile into **`~/.gpt-cursor-chrome`** and launches that debug copy with port `9222`.
+## Timeouts / polling
 
-## Setup
+| Setting | Default |
+|--------|---------|
+| Cursor wait | **60 minutes** |
+| GPT wait | **20 minutes** |
+| Status check | **every 60 seconds** |
+| Done signal | `Prompt {n} Completed` (+ Stop→Send / Worked for fallback) |
 
-```bash
-git pull
+## Fresh Windows NUC setup
+
+1. Install [Node.js 18+](https://nodejs.org/) (LTS)
+2. Install [Google Chrome](https://www.google.com/chrome/)
+3. Open PowerShell:
+
+```powershell
+git clone https://github.com/iamniteeshk/GPT-Cursor.git
+cd GPT-Cursor
+git checkout cursor/gpt-cursor-automation-fb11
 npm install
-cp -n .env.example .env
+copy .env.example .env
 ```
 
-## Mac test commands
+4. Start debug Chrome (auto-quits normal Chrome, seeds profile):
 
-```bash
-bash scripts/start-chrome.sh
+```powershell
+.\scripts\start-chrome.ps1
 ```
 
-You must see:
+5. Wait for `CDP is ready`, keep that Chrome open, log into ChatGPT + Cursor if asked.
 
-```text
-CDP is ready at http://127.0.0.1:9222
-SUCCESS.
-```
+6. Run automation:
 
-Then:
-
-```bash
-curl http://127.0.0.1:9222/json/version
-npm run check-login
+```powershell
 npm start
 ```
 
-If the debug Chrome window asks you to sign into ChatGPT or Cursor, sign in once there, then rerun `npm run check-login`.
+Paste the GPT + Cursor links when prompted.
 
-## What the start script does
-
-1. Quits normal Chrome (needed to copy cookies safely)
-2. Seeds `~/.gpt-cursor-chrome` from your real profile
-3. Starts that **non-default** profile with `--remote-debugging-port=9222`
-4. Verifies CDP before exiting
-
-Skip re-copying an already-seeded profile:
+## macOS setup
 
 ```bash
-SYNC_PROFILE=0 bash scripts/start-chrome.sh
+git clone https://github.com/iamniteeshk/GPT-Cursor.git
+cd GPT-Cursor
+git checkout cursor/gpt-cursor-automation-fb11
+npm install
+cp -n .env.example .env
+bash scripts/start-chrome.sh
+npm start
 ```
 
-## Default URLs / stop phrase
+## Each run
 
-- GPT: `https://chatgpt.com/c/6a7b03a4-1650-83ee-aa2f-7cf42012dc5d`
-- Cursor: `https://cursor.com/agents/bc-bcf89552-31d7-414b-af4c-c5ba7443f517`
-- Stops when GPT replies with: `Automation Done`
+```text
+Enter chat links for this run:
+GPT chat URL: https://chatgpt.com/c/...
+Cursor agent URL: https://cursor.com/agents/bc-...
+```
 
-Override in `.env` if needed.
+Optional defaults can be stored in `.env`, but the terminal still asks every run.
 
-## Telegram secrets (optional)
+## Busy / done detection (Cursor)
 
-Store locally in either place (never commit real tokens):
+Every minute the script checks:
 
-**.env**
+1. **Composer action button**
+   - `Stop` visible → still busy
+   - `Send` visible again after Stop → likely done
+2. **Text marker** (best): `Prompt 1 Completed`, `Prompt 2 Completed`, …
+3. Fallback: new `Worked for …` after a Stop→Send transition
+
+Each Cursor prompt is appended with instructions to print `Prompt {n} Completed`.  
+Follow-ups to GPT also ask it to include that requirement in the next Cursor prompt.
+
+## Optional Telegram secrets
+
+`.env`:
 ```env
-TELEGRAM_BOT_TOKEN=123456:ABC...
-TELEGRAM_CHAT_ID=987654321
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHAT_ID=...
 ```
 
-**or `secrets.local.json`** (copy from example):
-```bash
-cp secrets.local.json.example secrets.local.json
-```
+or `secrets.local.json` (from `secrets.local.json.example`).
 
-```json
-{
-  "telegramBotToken": "123456:ABC...",
-  "telegramChatId": "987654321"
-}
-```
-
-If Telegram fields appear and secrets exist → autofill.  
-If secrets are missing → log once and **proceed as usual** (no pause).
+If missing → proceed without pausing.
 
 ## Notes
 
-- Keep that Chrome window open while the script runs.
-- Soft popups (notifications, cookies, "Not now") are auto-dismissed.
-- Only hard blockers pause the loop: **Agent is blocked**, GitHub token errors, Cloudflare.
-- Cursor wait default is **40 minutes**; progress logs every minute.
-- Artifacts are saved under `artifacts/`.
+- Keep the debug Chrome window open while it runs
+- Soft popups auto-dismiss; hard blockers (GitHub / Cloudflare / Agent blocked) pause with a message
+- Artifacts land in `artifacts/`
+- Why `~/.gpt-cursor-chrome`? Newer Chrome blocks remote debugging on the default profile directory

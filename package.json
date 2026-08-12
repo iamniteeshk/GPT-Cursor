@@ -1,13 +1,16 @@
 {
   "name": "gpt-cursor",
-  "version": "1.0.0",
-  "description": "Automate GPT ↔ Cursor agent copy-paste workflow using your Chrome profile (no APIs).",
+  "version": "1.1.0",
+  "description": "Automate GPT ↔ Cursor agent copy-paste workflow using your Chrome profile (no APIs). macOS + Windows.",
   "type": "module",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "automate": "node src/index.js",
-    "check-login": "node src/index.js --check-login"
+    "check-login": "node src/index.js --check-login",
+    "setup:mac": "bash scripts/setup-mac.sh",
+    "chrome:mac": "bash scripts/start-chrome.sh",
+    "chrome:win": "powershell -ExecutionPolicy Bypass -File scripts/start-chrome.ps1"
   },
   "engines": {
     "node": ">=18"

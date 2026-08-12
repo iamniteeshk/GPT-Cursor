@@ -197,11 +197,10 @@ if wait_for_cdp; then
   echo
   echo
   echo "SUCCESS. Next:"
-  echo "  npm run check-login"
   echo "  npm start"
+  echo "You will be asked for GPT + Cursor links in the terminal."
   echo
   echo "If ChatGPT/Cursor ask you to log in in this debug Chrome window, log in once."
-  echo "The script will wait, or you can rerun check-login after logging in."
 else
   echo
   echo "ERROR: Chrome started but port ${PORT} never opened." >&2

@@ -1,6 +1,5 @@
-# Start Chrome with remote debugging for GPT↔Cursor automation.
-# Newer Chrome refuses remote debugging on the default profile directory, so we use
-# a dedicated debug profile (seeded from your real Chrome profile).
+# Start Chrome with remote debugging for GPT↔Cursor automation (Windows / NUC).
+# Newer Chrome requires a NON-default user-data-dir for remote debugging.
 
 param(
   [int]$Port = 9222,
@@ -11,23 +10,16 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$chromePaths = @(
-  "$env:PROGRAMFILES\Google\Chrome\Application\chrome.exe",
-  "${env:PROGRAMFILES(X86)}\Google\Chrome\Application\chrome.exe",
-  "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe"
-)
-
-$chrome = $chromePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
-if (-not $chrome) {
-  Write-Error "Google Chrome not found."
-  exit 1
-}
-
-$realUserDataDir = Join-Path $env:LOCALAPPDATA "Google\Chrome\User Data"
-$debugUserDataDir = if ($env:GPT_CURSOR_CHROME_DIR) {
-  $env:GPT_CURSOR_CHROME_DIR
-} else {
-  Join-Path $env:USERPROFILE ".gpt-cursor-chrome"
+function Find-Chrome {
+  $paths = @(
+    "$env:PROGRAMFILES\Google\Chrome\Application\chrome.exe",
+    "${env:PROGRAMFILES(X86)}\Google\Chrome\Application\chrome.exe",
+    "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe"
+  )
+  foreach ($p in $paths) {
+    if (Test-Path $p) { return $p }
+  }
+  return $null
 }
 
 function Test-ChromeRunning {
@@ -43,37 +35,26 @@ function Test-CdpReady {
   }
 }
 
-function Sync-Profile {
-  $srcProfile = Join-Path $realUserDataDir $ProfileDirectory
-  $dstProfile = Join-Path $debugUserDataDir $ProfileDirectory
-
-  if (-not (Test-Path $srcProfile)) {
-    Write-Host "WARNING: Real Chrome profile not found at $srcProfile"
-    New-Item -ItemType Directory -Force -Path $dstProfile | Out-Null
-    return
-  }
-
-  Write-Host "Seeding debug profile from your Chrome profile..."
-  Write-Host "  from: $srcProfile"
-  Write-Host "  to:   $dstProfile"
-
-  New-Item -ItemType Directory -Force -Path $debugUserDataDir | Out-Null
-  $localState = Join-Path $realUserDataDir "Local State"
-  if (Test-Path $localState) {
-    Copy-Item $localState (Join-Path $debugUserDataDir "Local State") -Force
-  }
-
-  if (Test-Path $dstProfile) {
-    Remove-Item $dstProfile -Recurse -Force
-  }
-  New-Item -ItemType Directory -Force -Path $dstProfile | Out-Null
-
-  # robocopy copies profile data; exit codes 0-7 are success-ish
-  & robocopy $srcProfile $dstProfile /E /XD Cache "Code Cache" GPUCache DawnCache ShaderCache GrShaderCache "Service Worker\CacheStorage" /NFL /NDL /NJH /NJS /nc /ns /np | Out-Null
-  Get-ChildItem $dstProfile -Filter "Singleton*" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
-  Remove-Item (Join-Path $dstProfile "LockFile") -Force -ErrorAction SilentlyContinue
-  Write-Host "Profile seed complete."
+$chrome = Find-Chrome
+if (-not $chrome) {
+  Write-Error @"
+Google Chrome not found.
+Install Chrome first: https://www.google.com/chrome/
+Then rerun this script.
+"@
+  exit 1
 }
+
+$realUserDataDir = Join-Path $env:LOCALAPPDATA "Google\Chrome\User Data"
+$debugUserDataDir = if ($env:GPT_CURSOR_CHROME_DIR) {
+  $env:GPT_CURSOR_CHROME_DIR
+} else {
+  Join-Path $env:USERPROFILE ".gpt-cursor-chrome"
+}
+
+Write-Host "Chrome: $chrome"
+Write-Host "Real profile:  $realUserDataDir"
+Write-Host "Debug profile: $debugUserDataDir"
 
 if (Test-ChromeRunning) {
   if ($NoAutoQuit) {
@@ -90,20 +71,34 @@ if (Test-ChromeRunning) {
 }
 
 if (Test-CdpReady) {
-  Write-Host "Port $Port already has a CDP server. Reusing it."
-  Write-Host "OK — now run: npm run check-login"
+  Write-Host "Port $Port already has CDP. OK — run: npm start"
   exit 0
 }
 
 if (-not $NoSyncProfile) {
-  Sync-Profile
-} else {
-  New-Item -ItemType Directory -Force -Path (Join-Path $debugUserDataDir $ProfileDirectory) | Out-Null
+  $srcProfile = Join-Path $realUserDataDir $ProfileDirectory
+  $dstProfile = Join-Path $debugUserDataDir $ProfileDirectory
+  New-Item -ItemType Directory -Force -Path $debugUserDataDir | Out-Null
+  if (Test-Path $srcProfile) {
+    Write-Host "Seeding debug profile from your Chrome profile..."
+    $localState = Join-Path $realUserDataDir "Local State"
+    if (Test-Path $localState) {
+      Copy-Item $localState (Join-Path $debugUserDataDir "Local State") -Force
+    }
+    if (Test-Path $dstProfile) { Remove-Item $dstProfile -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $dstProfile | Out-Null
+    & robocopy $srcProfile $dstProfile /E /XD Cache "Code Cache" GPUCache DawnCache ShaderCache GrShaderCache "Service Worker\CacheStorage" /NFL /NDL /NJH /NJS /nc /ns /np | Out-Null
+    Get-ChildItem $dstProfile -Filter "Singleton*" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $dstProfile "LockFile") -Force -ErrorAction SilentlyContinue
+    Write-Host "Profile seed complete."
+  } else {
+    Write-Host "No existing Chrome profile found. A fresh debug profile will be used."
+    Write-Host "Log into ChatGPT + Cursor once in the debug Chrome window."
+    New-Item -ItemType Directory -Force -Path $dstProfile | Out-Null
+  }
 }
 
-Write-Host "Starting debug Chrome with remote debugging on port $Port"
-Write-Host "Debug profile: $debugUserDataDir"
-
+Write-Host "Starting debug Chrome on port $Port ..."
 Start-Process -FilePath $chrome -ArgumentList @(
   "--remote-debugging-port=$Port",
   "--remote-allow-origins=*",
@@ -118,20 +113,16 @@ Start-Process -FilePath $chrome -ArgumentList @(
 $ready = $false
 for ($i = 0; $i -lt 40; $i++) {
   Start-Sleep -Milliseconds 500
-  if (Test-CdpReady) {
-    $ready = $true
-    break
-  }
+  if (Test-CdpReady) { $ready = $true; break }
 }
 
 if (-not $ready) {
-  Write-Error "Chrome started but port $Port never opened. Check whether antivirus blocked debugging."
+  Write-Error "Chrome started but port $Port never opened."
   exit 1
 }
 
 Write-Host ""
 Write-Host "CDP is ready at http://127.0.0.1:$Port"
 Write-Host "SUCCESS. Next:"
-Write-Host "  npm run check-login"
 Write-Host "  npm start"
-Write-Host "If this debug Chrome asks you to log in, do that once, then rerun check-login."
+Write-Host "You will be asked for GPT + Cursor links in the terminal."

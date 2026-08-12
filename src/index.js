@@ -19,6 +19,7 @@ import {
   getLatestCursorText,
   isCursorLoggedIn,
   openCursorAgent,
+  promptCompletedMarker,
   resolveCursorPage,
   sendPromptToCursor,
   waitForCursorLogin,
@@ -26,6 +27,7 @@ import {
   writeCursorDump,
 } from "./cursor-agent.js";
 import { denyBrowserPermissions, dismissBlockingUi, installDialogHandlers } from "./popups.js";
+import { promptForUrls } from "./prompt-urls.js";
 import { describeSecrets } from "./secrets.js";
 
 const checkLoginOnly = process.argv.includes("--check-login");
@@ -42,7 +44,6 @@ async function assertOrWaitLogin(gptPage, cursorPage) {
   const missing = [];
   if (!gptOk) missing.push("ChatGPT");
   if (!cursorOk) missing.push("Cursor");
-
   console.log(`Not logged in: ${missing.join(" + ")}`);
   console.log("Please log in in the Chrome window. Script will wait...");
 
@@ -51,25 +52,37 @@ async function assertOrWaitLogin(gptPage, cursorPage) {
 
   gptOk = await isChatGptLoggedIn(gptPage);
   cursorOk = await isCursorLoggedIn(cursorPage);
-
   if (!gptOk || !cursorOk) {
-    throw new Error(
-      `Still not logged in after waiting. ChatGPT=${gptOk} Cursor=${cursorOk}`
-    );
+    throw new Error(`Still not logged in after waiting. ChatGPT=${gptOk} Cursor=${cursorOk}`);
   }
   console.log("Login complete for both services.");
 }
 
 async function readGptPrompt(gptPage, cachedText) {
-  // Prefer the reply we just received at end of previous loop — avoids reload races.
   if (cachedText && cachedText.trim().length > 20) {
     console.log("Using cached GPT follow-up from previous loop.");
     return cachedText.trim();
   }
-
   await openChatGpt(gptPage);
   await dismissBlockingUi(gptPage, { label: "ChatGPT" });
   return getLatestAssistantText(gptPage, { retries: 10 });
+}
+
+function buildGptFollowUp({ cursorText, images, loopIndex, nextLoopIndex }) {
+  const nextMarker = promptCompletedMarker(nextLoopIndex);
+  return [
+    `Cursor agent output for Prompt ${loopIndex}:`,
+    "",
+    cursorText,
+    "",
+    images.length
+      ? `Attached ${images.length} screenshot(s)/image(s) from Cursor.`
+      : "No images were captured from Cursor this round.",
+    "",
+    "Write the next prompt for Cursor now.",
+    `In that Cursor prompt, tell Cursor that when it finishes it must print exactly: ${nextMarker}`,
+    `If the website/app has reached a finishing stage, reply with ONLY these 2 words and nothing else: ${config.stopPhrase}`,
+  ].join("\n");
 }
 
 async function runLoop(gptPage, cursorPage, context) {
@@ -86,7 +99,7 @@ async function runLoop(gptPage, cursorPage, context) {
     try {
       assistantText = await readGptPrompt(gptPage, cachedGptText);
     } catch (error) {
-      console.warn(`GPT read failed (${error.message}). Forcing reload and retrying once…`);
+      console.warn(`GPT read failed (${error.message}). Reloading…`);
       await openChatGpt(gptPage, { forceReload: true });
       assistantText = await getLatestAssistantText(gptPage, { retries: 12 });
     }
@@ -96,31 +109,27 @@ async function runLoop(gptPage, cursorPage, context) {
 
     if (assistantText.includes(config.stopPhrase)) {
       console.log(`Found stop phrase: ${config.stopPhrase}`);
-      await fs.writeFile(
-        artifactPath("final-gpt-message.txt"),
-        assistantText,
-        "utf8"
-      );
+      await fs.writeFile(artifactPath("final-gpt-message.txt"), assistantText, "utf8");
       return { loops, completed: true, finalMessage: assistantText };
     }
 
     const prompt = extractCursorPrompt(assistantText);
     await fs.writeFile(artifactPath(`gpt-loop-${loops}-prompt.txt`), prompt, "utf8");
-    console.log(`Extracted Cursor prompt (${prompt.length} chars). Sending to Cursor...`);
+    console.log(
+      `Extracted Cursor prompt (${prompt.length} chars). Expect marker: ${promptCompletedMarker(loops)}`
+    );
 
     activeCursorPage = await resolveCursorPage(context, activeCursorPage);
     await openCursorAgent(activeCursorPage);
     await dismissBlockingUi(activeCursorPage, { label: "Cursor" });
 
     const previousCursorText = await getLatestCursorText(activeCursorPage).catch(() => "");
-    await sendPromptToCursor(activeCursorPage, prompt);
+    await sendPromptToCursor(activeCursorPage, prompt, loops);
     console.log("Prompt sent. Waiting for Cursor to finish...");
 
-    activeCursorPage = (await waitForCursorReply(
-      activeCursorPage,
-      previousCursorText,
-      context
-    )) || activeCursorPage;
+    activeCursorPage =
+      (await waitForCursorReply(activeCursorPage, previousCursorText, context, loops)) ||
+      activeCursorPage;
 
     const cursorText = await getLatestCursorText(activeCursorPage);
     const textFile = await writeCursorDump(loops, cursorText);
@@ -130,18 +139,12 @@ async function runLoop(gptPage, cursorPage, context) {
     console.log(`Saved text: ${textFile}`);
     console.log(`Captured ${images.length} image artifact(s)`);
 
-    const followUp = [
-      "Cursor agent output for this step:",
-      "",
+    const followUp = buildGptFollowUp({
       cursorText,
-      "",
-      images.length
-        ? `Attached ${images.length} screenshot(s)/image(s) from Cursor.`
-        : "No images were captured from Cursor this round.",
-      "",
-      "Write the next prompt for Cursor now.",
-      `If the website/app has reached a finishing stage, reply with ONLY these 2 words and nothing else: ${config.stopPhrase}`,
-    ].join("\n");
+      images,
+      loopIndex: loops,
+      nextLoopIndex: loops + 1,
+    });
 
     await gptPage.bringToFront();
     await openChatGpt(gptPage);
@@ -152,24 +155,16 @@ async function runLoop(gptPage, cursorPage, context) {
     try {
       nextAssistant = await getLatestAssistantText(gptPage, { retries: 10 });
     } catch (error) {
-      console.warn(`GPT reply read failed (${error.message}). Reloading and retrying…`);
+      console.warn(`GPT reply read failed (${error.message}). Reloading…`);
       await openChatGpt(gptPage, { forceReload: true });
       nextAssistant = await getLatestAssistantText(gptPage, { retries: 12 });
     }
 
-    await fs.writeFile(
-      artifactPath(`gpt-loop-${loops}-reply.txt`),
-      nextAssistant,
-      "utf8"
-    );
+    await fs.writeFile(artifactPath(`gpt-loop-${loops}-reply.txt`), nextAssistant, "utf8");
 
     if (nextAssistant.includes(config.stopPhrase)) {
       console.log(`GPT says: ${config.stopPhrase}`);
-      await fs.writeFile(
-        artifactPath("final-gpt-message.txt"),
-        nextAssistant,
-        "utf8"
-      );
+      await fs.writeFile(artifactPath("final-gpt-message.txt"), nextAssistant, "utf8");
       return { loops, completed: true, finalMessage: nextAssistant };
     }
 
@@ -180,9 +175,17 @@ async function runLoop(gptPage, cursorPage, context) {
 
 async function main() {
   console.log("GPT ↔ Cursor automation");
+  console.log(`Platform: ${config.platform}`);
+  console.log("Secrets:", describeSecrets());
+
+  if (!checkLoginOnly) {
+    await promptForUrls();
+  } else if (!config.gptUrl || !config.cursorUrl) {
+    await promptForUrls();
+  }
+
   console.log(`GPT:    ${config.gptUrl}`);
   console.log(`Cursor: ${config.cursorUrl}`);
-  console.log("Secrets:", describeSecrets());
 
   await ensureArtifactsDir();
   const { context } = await connectBrowser();
