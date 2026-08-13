@@ -184,8 +184,18 @@ async function main() {
     await promptForUrls();
   }
 
+  if (config.cursorReplyTimeoutMs < 3_600_000) {
+    console.warn(
+      `WARNING: CURSOR_REPLY_TIMEOUT_MS is ${config.cursorReplyTimeoutMs} (${Math.round(config.cursorReplyTimeoutMs / 60000)}m). ` +
+        `Recommended: 3600000 (60m). Update .env or run: cp .env.example .env`
+    );
+  }
+
   console.log(`GPT:    ${config.gptUrl}`);
   console.log(`Cursor: ${config.cursorUrl}`);
+  console.log(
+    `Timeouts: Cursor ${Math.round(config.cursorReplyTimeoutMs / 60000)}m | GPT ${Math.round(config.gptReplyTimeoutMs / 60000)}m | poll ${Math.round(config.pollIntervalMs / 1000)}s`
+  );
 
   await ensureArtifactsDir();
   const { context } = await connectBrowser();

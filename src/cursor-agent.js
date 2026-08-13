@@ -165,13 +165,15 @@ function extractWorkedFor(text) {
   return matches?.length ? matches[matches.length - 1] : "";
 }
 
-function hasPromptCompleted(text, loopIndex) {
-  const marker = promptCompletedMarker(loopIndex);
-  const re = new RegExp(
-    `prompt\\s*${loopIndex}\\s*completed|${marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
-    "i"
-  );
-  return re.test(String(text || ""));
+function countPromptCompleted(text, loopIndex) {
+  const re = new RegExp(`Prompt\\s*${loopIndex}\\s*Completed`, "gi");
+  return (String(text || "").match(re) || []).length;
+}
+
+function hasPromptCompleted(text, loopIndex, baselineCount = 0) {
+  // Our outgoing prompt already contains the marker once. Done = marker count increased
+  // (assistant printed it), not merely that the instruction text is on the page.
+  return countPromptCompleted(text, loopIndex) > baselineCount;
 }
 
 export async function sendPromptToCursor(page, prompt, loopIndex) {
@@ -228,21 +230,28 @@ export async function sendPromptToCursor(page, prompt, loopIndex) {
 
 /**
  * Wait for Cursor to finish.
- * Primary done signal: "Prompt {n} Completed"
+ * Primary done signal: assistant prints an EXTRA "Prompt {n} Completed"
+ * (our sent instruction already contains one copy — that alone is not done).
  * Also watches Send↔Stop button transitions every pollIntervalMs (default 60s).
  */
 export async function waitForCursorReply(page, previousText, context, loopIndex) {
   let active = page;
+  // Let the UI flip to Stop after send before taking baseline.
+  await sleep(5000);
+  if (context) active = await resolveCursorPage(context, active);
+
   const baselineText = await collectPageText(active);
   const baselineWorkedFor = extractWorkedFor(baselineText);
+  const baselineMarkerCount = countPromptCompleted(baselineText, loopIndex);
   let sawStop = false;
   let lastActionKind = "";
   let lastProgressLog = 0;
   const started = Date.now();
   const marker = promptCompletedMarker(loopIndex);
+  const timeoutMin = Math.round(config.cursorReplyTimeoutMs / 60000);
 
   console.log(
-    `Cursor wait start | expect "${marker}" | baseline workedFor="${baselineWorkedFor || "none"}" | textChars=${baselineText.length}`
+    `Cursor wait start | expect extra "${marker}" | baselineMarkers=${baselineMarkerCount} | baseline workedFor="${baselineWorkedFor || "none"}" | timeout=${timeoutMin}m | textChars=${baselineText.length}`
   );
 
   await waitUntil(
@@ -265,7 +274,8 @@ export async function waitForCursorReply(page, previousText, context, loopIndex)
       const fullText = await collectPageText(active);
       const action = await getComposerActionState(active);
       const workedFor = extractWorkedFor(fullText);
-      const completed = hasPromptCompleted(fullText, loopIndex);
+      const markerCount = countPromptCompleted(fullText, loopIndex);
+      const completed = markerCount > baselineMarkerCount;
       const newWorkedFor = Boolean(workedFor) && workedFor !== baselineWorkedFor;
 
       if (action === "stop") sawStop = true;
@@ -275,17 +285,17 @@ export async function waitForCursorReply(page, previousText, context, loopIndex)
         lastProgressLog = now;
         const mins = ((now - started) / 60000).toFixed(1);
         console.log(
-          `… Cursor ${mins}m | action=${action} sawStop=${sawStop} completed=${completed} workedFor="${workedFor || "none"}" textChars=${fullText.length}`
+          `… Cursor ${mins}m/${timeoutMin}m | action=${action} sawStop=${sawStop} markers=${markerCount}/${baselineMarkerCount}+ completed=${completed} workedFor="${workedFor || "none"}" textChars=${fullText.length}`
         );
       }
 
       // Still working: Stop button is showing.
       if (action === "stop") return false;
 
-      // Best signal: explicit completion marker from the agent.
-      if (completed) {
+      // Best signal: assistant printed an additional completion marker and Stop is gone.
+      if (completed && (sawStop || newWorkedFor || Date.now() - started > 90_000)) {
         active.__lastCursorText = pickAssistantPayload(fullText, previousText, loopIndex);
-        console.log(`Detected ${marker}`);
+        console.log(`Detected assistant ${marker} (markers ${markerCount} > baseline ${baselineMarkerCount})`);
         return true;
       }
 
