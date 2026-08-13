@@ -9,6 +9,7 @@ import {
 import {
   extractCursorPrompt,
   getLatestAssistantText,
+  isAutomationComplete,
   isChatGptLoggedIn,
   openChatGpt,
   sendToChatGpt,
@@ -81,7 +82,11 @@ function buildGptFollowUp({ cursorText, images, loopIndex, nextLoopIndex }) {
     "",
     "Write the next prompt for Cursor now.",
     `In that Cursor prompt, tell Cursor that when it finishes it must print exactly: ${nextMarker}`,
-    `If the website/app has reached a finishing stage, reply with ONLY these 2 words and nothing else: ${config.stopPhrase}`,
+    "",
+    "IMPORTANT STOP RULE:",
+    `- If more Cursor work is needed, do NOT mention "${config.stopPhrase}" at all.`,
+    `- Only when everything is fully finished, reply with EXACTLY these 2 words and nothing else:`,
+    config.stopPhrase,
   ].join("\n");
 }
 
@@ -107,7 +112,7 @@ async function runLoop(gptPage, cursorPage, context) {
 
     console.log(`GPT latest message length: ${assistantText.length} chars`);
 
-    if (assistantText.includes(config.stopPhrase)) {
+    if (isAutomationComplete(assistantText, config.stopPhrase)) {
       console.log(`Found stop phrase: ${config.stopPhrase}`);
       await fs.writeFile(artifactPath("final-gpt-message.txt"), assistantText, "utf8");
       return { loops, completed: true, finalMessage: assistantText };
@@ -162,7 +167,7 @@ async function runLoop(gptPage, cursorPage, context) {
 
     await fs.writeFile(artifactPath(`gpt-loop-${loops}-reply.txt`), nextAssistant, "utf8");
 
-    if (nextAssistant.includes(config.stopPhrase)) {
+    if (isAutomationComplete(nextAssistant, config.stopPhrase)) {
       console.log(`GPT says: ${config.stopPhrase}`);
       await fs.writeFile(artifactPath("final-gpt-message.txt"), nextAssistant, "utf8");
       return { loops, completed: true, finalMessage: nextAssistant };

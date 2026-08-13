@@ -206,6 +206,59 @@ export function extractCursorPrompt(assistantText) {
   return text;
 }
 
+/**
+ * Stop only when GPT is actually ending the loop.
+ * If the same message still includes a next "Prompt N Completed" work order,
+ * that prompt must still be sent to Cursor (do not stop early).
+ */
+export function isAutomationComplete(assistantText, stopPhrase = "Automation Done") {
+  const text = String(assistantText || "").trim();
+  if (!text) return false;
+
+  const stopRe = new RegExp(
+    stopPhrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+"),
+    "i"
+  );
+  if (!stopRe.test(text)) return false;
+
+  // Exact / almost-exact stop reply.
+  const normalized = text.replace(/\s+/g, " ").trim();
+  const stopNormalized = String(stopPhrase).replace(/\s+/g, " ").trim();
+  if (new RegExp(`^${stopNormalized.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.?$`, "i").test(normalized)) {
+    return true;
+  }
+  if (text.length <= 80) return true;
+
+  // Still has a Cursor work order → keep looping.
+  const hasNextPromptOrder =
+    /Prompt\s+\d+\s+Completed/i.test(text) &&
+    /(when\s+(you\s+)?(are\s+)?(completely\s+)?finished|print\s+exactly|final pass|implement|fix|verify)/i.test(
+      text
+    );
+  if (hasNextPromptOrder) {
+    console.log(
+      `GPT mentioned "${stopPhrase}" but also included a next Cursor prompt — continuing.`
+    );
+    return false;
+  }
+
+  // Long message ending with only the stop phrase as the last meaningful line.
+  const lines = text
+    .split(/\n+/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const last = lines[lines.length - 1] || "";
+  if (stopRe.test(last) && last.length <= stopPhrase.length + 10 && text.length < 300) {
+    return true;
+  }
+
+  // Otherwise ignore embedded mentions inside larger instructions.
+  console.log(
+    `GPT mentioned "${stopPhrase}" inside a longer message without a clear solo stop — continuing.`
+  );
+  return false;
+}
+
 export async function sendToChatGpt(page, { text, imagePaths = [] }) {
   await dismissBlockingUi(page, { label: "ChatGPT" });
   await waitForChatReady(page);
