@@ -5,7 +5,10 @@ import { config, setRuntimeUrls } from "./config.js";
 function looksLikeUrl(value, hostPart) {
   try {
     const u = new URL(String(value).trim());
-    return u.protocol.startsWith("http") && u.href.includes(hostPart);
+    return (
+      (u.protocol === "http:" || u.protocol === "https:") &&
+      u.hostname.includes(hostPart)
+    );
   } catch {
     return false;
   }

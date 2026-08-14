@@ -22,6 +22,7 @@ import {
   openCursorAgent,
   promptCompletedMarker,
   resolveCursorPage,
+  resolvePromptNumber,
   sendPromptToCursor,
   waitForCursorLogin,
   waitForCursorReply,
@@ -119,9 +120,10 @@ async function runLoop(gptPage, cursorPage, context) {
     }
 
     const prompt = extractCursorPrompt(assistantText);
+    const promptNumber = resolvePromptNumber(assistantText, loops);
     await fs.writeFile(artifactPath(`gpt-loop-${loops}-prompt.txt`), prompt, "utf8");
     console.log(
-      `Extracted Cursor prompt (${prompt.length} chars). Expect marker: ${promptCompletedMarker(loops)}`
+      `Extracted Cursor prompt (${prompt.length} chars). Loop=${loops} Prompt#=${promptNumber} marker=${promptCompletedMarker(promptNumber)}`
     );
 
     activeCursorPage = await resolveCursorPage(context, activeCursorPage);
@@ -129,12 +131,16 @@ async function runLoop(gptPage, cursorPage, context) {
     await dismissBlockingUi(activeCursorPage, { label: "Cursor" });
 
     const previousCursorText = await getLatestCursorText(activeCursorPage).catch(() => "");
-    await sendPromptToCursor(activeCursorPage, prompt, loops);
+    await sendPromptToCursor(activeCursorPage, prompt, promptNumber);
     console.log("Prompt sent. Waiting for Cursor to finish...");
 
     activeCursorPage =
-      (await waitForCursorReply(activeCursorPage, previousCursorText, context, loops)) ||
-      activeCursorPage;
+      (await waitForCursorReply(
+        activeCursorPage,
+        previousCursorText,
+        context,
+        promptNumber
+      )) || activeCursorPage;
 
     const cursorText = await getLatestCursorText(activeCursorPage);
     const textFile = await writeCursorDump(loops, cursorText);
@@ -147,8 +153,8 @@ async function runLoop(gptPage, cursorPage, context) {
     const followUp = buildGptFollowUp({
       cursorText,
       images,
-      loopIndex: loops,
-      nextLoopIndex: loops + 1,
+      loopIndex: promptNumber,
+      nextLoopIndex: promptNumber + 1,
     });
 
     await gptPage.bringToFront();

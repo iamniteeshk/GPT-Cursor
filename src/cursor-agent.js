@@ -8,12 +8,28 @@ import {
 } from "./popups.js";
 
 function agentIdFromUrl(url = config.cursorUrl) {
-  const parts = String(url).split("/").filter(Boolean);
-  return parts[parts.length - 1] || "";
+  try {
+    const u = new URL(String(url));
+    const parts = u.pathname.split("/").filter(Boolean);
+    return parts[parts.length - 1] || "";
+  } catch {
+    const noQuery = String(url).split("?")[0].split("#")[0];
+    const parts = noQuery.split("/").filter(Boolean);
+    return parts[parts.length - 1] || "";
+  }
 }
 
 export function promptCompletedMarker(loopIndex) {
   return `Prompt ${loopIndex} Completed`;
+}
+
+/** Prefer Prompt N from GPT text when present; else use loop index. */
+export function resolvePromptNumber(assistantText, loopIndex) {
+  const matches = [...String(assistantText || "").matchAll(/Prompt\s+(\d+)\s+Completed/gi)];
+  if (!matches.length) return loopIndex;
+  const nums = matches.map((m) => Number(m[1])).filter((n) => Number.isFinite(n) && n > 0);
+  if (!nums.length) return loopIndex;
+  return Math.max(...nums);
 }
 
 export async function resolveCursorPage(context, preferredPage = null) {
@@ -342,18 +358,20 @@ function pickAssistantPayload(fullText, previousText = "", loopIndex = 1) {
   const marker = promptCompletedMarker(loopIndex);
   const markerIdx = text.toLowerCase().lastIndexOf(marker.toLowerCase());
   if (markerIdx >= 0) {
-    return text.slice(Math.max(0, markerIdx - 6000), markerIdx + marker.length + 200).trim();
+    // Prefer content leading up to the completion marker (the actual report).
+    const start = Math.max(0, markerIdx - 20000);
+    return text.slice(start, markerIdx + marker.length + 80).trim();
   }
 
   const workedIdx = text.toLowerCase().lastIndexOf("worked for");
   if (workedIdx >= 0) {
-    return text.slice(Math.max(0, workedIdx - 500), workedIdx + 8000).trim();
+    return text.slice(Math.max(0, workedIdx - 800), workedIdx + 20000).trim();
   }
 
   const changesIdx = text.toLowerCase().lastIndexOf("changes made");
-  if (changesIdx >= 0) return text.slice(changesIdx, changesIdx + 8000).trim();
+  if (changesIdx >= 0) return text.slice(changesIdx, changesIdx + 20000).trim();
 
-  return text.slice(-10000).trim();
+  return text.slice(-20000).trim();
 }
 
 export async function getLatestCursorText(page) {

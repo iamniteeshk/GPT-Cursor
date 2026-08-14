@@ -44,6 +44,5 @@ export function describeSecrets() {
     telegramBotToken: secrets.telegramBotToken ? "set" : "missing",
     telegramChatId: secrets.telegramChatId ? "set" : "missing",
     sourceFile: fs.existsSync(secretsPath) ? secretsPath : null,
-    envLoaded: Boolean(config.gptUrl),
   };
 }
