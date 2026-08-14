@@ -187,6 +187,7 @@ async function runLoop(gptPage, cursorPage, context) {
 async function main() {
   console.log("GPT ↔ Cursor automation");
   console.log(`Platform: ${config.platform}`);
+  console.log(`Browser:  ${config.browserName}`);
   console.log("Secrets:", describeSecrets());
 
   if (!checkLoginOnly) {

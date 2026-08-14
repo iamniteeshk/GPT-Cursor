@@ -15,8 +15,9 @@ if [[ ! -f .env ]]; then
 fi
 
 echo
-echo "Setup complete."
+echo "Setup complete. Browser default: Microsoft Edge"
 echo "Next:"
-echo "  1) bash scripts/start-chrome.sh"
+echo "  1) bash scripts/start-edge.sh"
 echo "  2) npm start"
-echo "Log into ChatGPT + Cursor in the debug Chrome if asked."
+echo "Log into ChatGPT + Cursor in the debug Edge window if asked."
+echo "(Optional Chrome: set BROWSER=chrome in .env and use bash scripts/start-chrome.sh)"

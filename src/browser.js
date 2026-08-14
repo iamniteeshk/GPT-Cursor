@@ -1,7 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
-import { config, defaultChromeUserDataDir } from "./config.js";
+import {
+  config,
+  defaultBrowserUserDataDir,
+  defaultDebugProfileDir,
+} from "./config.js";
 
 export async function ensureArtifactsDir() {
   await fs.mkdir(config.artifactsDir, { recursive: true });
@@ -9,25 +13,34 @@ export async function ensureArtifactsDir() {
 }
 
 export async function connectBrowser() {
-  console.log(`Connecting to Chrome via CDP: ${config.cdpUrl}`);
+  const label = config.browserName === "chrome" ? "Chrome" : "Edge";
+  console.log(`Connecting to ${label} via CDP: ${config.cdpUrl}`);
   try {
     const browser = await chromium.connectOverCDP(config.cdpUrl);
     const context = browser.contexts()[0] || (await browser.newContext());
     return { browser, context, mode: "cdp" };
   } catch (error) {
     const isWin = process.platform === "win32";
+    const startCmd = isWin
+      ? config.browserName === "chrome"
+        ? "  .\\scripts\\start-chrome.ps1"
+        : "  .\\scripts\\start-edge.ps1"
+      : config.browserName === "chrome"
+        ? "  bash scripts/start-chrome.sh"
+        : "  bash scripts/start-edge.sh";
+
     throw new Error(
       [
-        `Could not connect to Chrome at ${config.cdpUrl}.`,
+        `Could not connect to ${label} at ${config.cdpUrl}.`,
         "",
-        "Start debug Chrome first:",
-        isWin ? "  .\\scripts\\start-chrome.ps1" : "  bash scripts/start-chrome.sh",
+        "Start debug browser first:",
+        startCmd,
         "",
         "Wait until it prints: CDP is ready",
         "Then run: npm start",
         "",
-        `Default Chrome profile dir: ${defaultChromeUserDataDir()}`,
-        `Debug profile dir: ${config.debugChromeDir}`,
+        `Real profile dir: ${defaultBrowserUserDataDir(config.browserName)}`,
+        `Debug profile dir: ${defaultDebugProfileDir(config.browserName)}`,
         "",
         `Details: ${error.message}`,
       ].join("\n")

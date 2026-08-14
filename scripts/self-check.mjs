@@ -99,6 +99,8 @@ const requiredFiles = [
   "src/browser.js",
   "src/config.js",
   "src/prompt-urls.js",
+  "scripts/start-edge.sh",
+  "scripts/start-edge.ps1",
   "scripts/start-chrome.sh",
   "scripts/start-chrome.ps1",
   "scripts/setup-windows.ps1",
