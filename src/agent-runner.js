@@ -281,8 +281,16 @@ export class AgentRunner {
           });
 
           this.status = "waiting_gpt";
+          await this.emit(`Waiting on GPT after Prompt #${this.promptNumber}`);
           await openChatGpt(gptPage, { gptUrl: this.gptUrl });
-          await sendToChatGpt(gptPage, { text: followUp, imagePaths: images });
+          gptPage.__onGptProgress = async (line) => {
+            await this.emit(line);
+          };
+          try {
+            await sendToChatGpt(gptPage, { text: followUp, imagePaths: images });
+          } finally {
+            gptPage.__onGptProgress = null;
+          }
           let nextAssistant;
           try {
             nextAssistant = await getLatestAssistantText(gptPage, { retries: 10 });

@@ -321,32 +321,108 @@ export async function sendToChatGpt(page, { text, imagePaths = [] }) {
     await page.keyboard.press("Enter");
   }
 
-  await waitForGptReplySettled(page);
+  await waitForGptReplySettled(page, {
+    onProgress: async (line) => {
+      // Optional hook for agent runner / Telegram progress.
+      if (typeof page.__onGptProgress === "function") {
+        await page.__onGptProgress(line);
+      }
+    },
+  });
 }
 
-async function waitForGptReplySettled(page) {
+async function gptStopButtonVisible(page) {
+  const candidates = [
+    page.locator('button[data-testid="stop-button"]'),
+    page.locator('button[aria-label*="Stop generating" i]'),
+    page.locator('button[aria-label*="Stop streaming" i]'),
+    page.getByRole("button", { name: /^stop generating$/i }),
+    page.getByRole("button", { name: /^stop$/i }),
+  ];
+  for (const loc of candidates) {
+    if (await loc.first().isVisible().catch(() => false)) return true;
+  }
+  return false;
+}
+
+async function detectGptSoftError(page) {
+  const body = ((await page.locator("body").innerText().catch(() => "")) || "").slice(0, 8000);
+  const patterns = [
+    { re: /something went wrong/i, msg: "ChatGPT: Something went wrong" },
+    { re: /too many requests|rate limit|you've reached|usage limit/i, msg: "ChatGPT: rate/usage limit" },
+    { re: /network error|failed to send|couldn.?t send/i, msg: "ChatGPT: send/network error" },
+    { re: /verify you are human|just a moment/i, msg: "ChatGPT: Cloudflare / human check" },
+    { re: /log in|sign up to chatgpt/i, msg: "ChatGPT: login wall" },
+  ];
+  for (const p of patterns) {
+    if (p.re.test(body)) return p.msg;
+  }
+  // Composer still holding a huge unsent draft while no stop button → likely send failed
+  return null;
+}
+
+async function waitForGptReplySettled(page, { onProgress = null } = {}) {
   const startedText = await readAssistantOnce(page);
   const startedAt = Date.now();
+  let lastProgressLog = 0;
+  const timeoutMin = Math.round(config.gptReplyTimeoutMs / 60000);
 
-  await waitUntil("ChatGPT generation start", 180_000, async () => {
-    await dismissBlockingUi(page, { label: "ChatGPT" });
-    const stop = page.getByRole("button", { name: /stop/i }).first();
-    if (await stop.isVisible().catch(() => false)) return true;
-    const current = await readAssistantOnce(page);
-    return current && current !== startedText && current.length > startedText.length;
-  }, 1000);
+  console.log(
+    `GPT wait start | timeout=${timeoutMin}m | baselineChars=${startedText.length}`
+  );
 
-  await waitUntil("ChatGPT generation finish", config.gptReplyTimeoutMs, async () => {
-    await dismissBlockingUi(page, { label: "ChatGPT" });
-    const stop = page.getByRole("button", { name: /stop/i }).first();
-    if (await stop.isVisible().catch(() => false)) return false;
+  await waitUntil(
+    "ChatGPT generation start",
+    180_000,
+    async () => {
+      await dismissBlockingUi(page, { label: "ChatGPT" });
+      const soft = await detectGptSoftError(page);
+      if (soft) throw new Error(soft);
 
-    const streaming = page.locator('[data-testid="streaming"], .result-streaming');
-    if (await streaming.first().isVisible().catch(() => false)) return false;
+      const stop = page.getByRole("button", { name: /stop/i }).first();
+      if (await stop.isVisible().catch(() => false)) return true;
+      const current = await readAssistantOnce(page);
+      return current && current !== startedText && current.length > startedText.length;
+    },
+    1000
+  );
 
-    const a = await readAssistantOnce(page);
-    await sleep(1800);
-    const b = await readAssistantOnce(page);
-    return Boolean(a) && a === b && a.length > 20 && Date.now() - startedAt > 2500;
-  }, 1500);
+  await waitUntil(
+    "ChatGPT generation finish",
+    config.gptReplyTimeoutMs,
+    async () => {
+      await dismissBlockingUi(page, { label: "ChatGPT" });
+      const soft = await detectGptSoftError(page);
+      if (soft) throw new Error(soft);
+
+      const stop = page.getByRole("button", { name: /stop/i }).first();
+      const stopVisible = await stop.isVisible().catch(() => false);
+      const streaming = page.locator('[data-testid="streaming"], .result-streaming');
+      const streamingVisible = await streaming.first().isVisible().catch(() => false);
+
+      const now = Date.now();
+      if (now - lastProgressLog >= 60_000) {
+        lastProgressLog = now;
+        const mins = ((now - startedAt) / 60000).toFixed(1);
+        const line = `… GPT ${mins}m/${timeoutMin}m | stop=${stopVisible} streaming=${streamingVisible}`;
+        console.log(line);
+        if (typeof onProgress === "function") {
+          try {
+            await onProgress(line);
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      if (stopVisible) return false;
+      if (streamingVisible) return false;
+
+      const a = await readAssistantOnce(page);
+      await sleep(1800);
+      const b = await readAssistantOnce(page);
+      return Boolean(a) && a === b && a.length > 20 && Date.now() - startedAt > 2500;
+    },
+    1500
+  );
 }
