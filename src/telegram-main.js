@@ -9,16 +9,16 @@ import {
 } from "./telegram.js";
 
 /**
- * Long-poll Telegram bot:
- *   /run          — then paste GPT + Cursor links (same or next message)
+ * Telegram control (agent slots 1–5):
+ *   /status       — all 5 agents
+ *   /status N     — one agent
+ *   /run          — next free slot (1, then 2, … 5); paste GPT + Cursor links
  *   /run <gpt> <cursor>
- *   /status       — all agents
- *   /status <id>  — one agent
- *   /stop <id>
- *   /stopall
+ *   /stop         — stop ALL agents
+ *   /stop N       — stop one agent
  *   /help
  *
- * Sends a message when an agent hits Automation Done (or fails).
+ * Pings Telegram when Automation Done (or on failure).
  */
 
 const pendingByChat = new Map(); // chatId -> { step, gptUrl? }
@@ -27,18 +27,19 @@ function helpText() {
   return [
     "GPT ↔ Cursor Telegram control",
     "",
-    `Max agents: ${config.maxAgents} (= ${config.maxAgents * 2} browser tabs)`,
+    `Agents: slots 1–${config.maxAgents} (${config.maxAgents * 2} tabs)`,
+    "/run fills lowest free slot: 1 → 2 → … → 5",
     "",
     "Commands:",
-    "/run — start a run (send 2 links)",
+    "/status — status of all agents",
+    "/status N — status of one agent (e.g. /status 2)",
+    "/run — start on next free slot (then send 2 links)",
     "/run <gpt_url> <cursor_url>",
-    "/status — all agents",
-    "/status <id> — one agent",
-    "/stop <id> — stop one run",
-    "/stopall — stop every run",
+    "/stop — stop ALL agents",
+    "/stop N — stop one agent (e.g. /stop 3)",
     "/help — this message",
     "",
-    "After Automation Done you get a Telegram ping automatically.",
+    "You get a Telegram message when Automation Done.",
   ].join("\n");
 }
 
@@ -71,21 +72,18 @@ async function main() {
   await session.ensureConnected();
   console.log("Browser CDP connected. Listening for Telegram commands…");
   await tg.sendMessage(
-    `GPT-Cursor online.\nMax ${config.maxAgents} agents / ${config.maxAgents * 2} tabs.\nSend /help`
+    `GPT-Cursor online.\nSlots 1–${config.maxAgents} (${config.maxAgents * 2} tabs).\n/help`
   );
 
   const manager = new AgentManager({
     session,
     maxAgents: config.maxAgents,
     onEvent: async (event, payload) => {
-      if (event === "log") {
-        // Keep console only for noisy loop logs; major milestones still useful.
-        return;
-      }
+      if (event === "log") return;
       if (event === "agent_started") {
         await tg.sendMessage(
           `Started agent #${payload.agentId}\n` +
-            `Active ${payload.active}/${payload.max}\n` +
+            `Busy ${payload.active}/${payload.max}\n` +
             `GPT: ${payload.gptUrl}\n` +
             `Cursor: ${payload.cursorUrl}`
         );
@@ -96,7 +94,8 @@ async function main() {
           `✅ Automation Done — agent #${payload.agentId}\n` +
             `Loops: ${payload.loops}\n` +
             `GPT: ${payload.gptUrl}\n` +
-            `Cursor: ${payload.cursorUrl}`
+            `Cursor: ${payload.cursorUrl}\n` +
+            `Slot #${payload.agentId} is free for /run`
         );
         return;
       }
@@ -109,7 +108,10 @@ async function main() {
         return;
       }
       if (event === "agent_stopped") {
-        await tg.sendMessage(`⏹ Agent #${payload.agentId} stopped (loop ${payload.loops})`);
+        await tg.sendMessage(
+          `⏹ Agent #${payload.agentId} stopped (loop ${payload.loops})\n` +
+            `Slot #${payload.agentId} is free for /run`
+        );
       }
     },
   });
@@ -120,9 +122,7 @@ async function main() {
 
     if (pending?.step === "gpt" && gptUrl) {
       pendingByChat.set(String(chatId), { step: "cursor", gptUrl });
-      if (cursorUrl) {
-        // both in same message
-      } else {
+      if (!cursorUrl) {
         await tg.sendMessage("Got GPT link. Now send the Cursor agent URL.", { chatId });
         return true;
       }
@@ -132,13 +132,24 @@ async function main() {
     const cursor = cursorUrl;
     if (gpt && cursor) {
       pendingByChat.delete(String(chatId));
+      const slot = manager.nextFreeSlot();
+      if (!slot) {
+        await tg.sendMessage(
+          `All ${config.maxAgents} agents busy.\n/status\n/stop N  or  /stop`,
+          { chatId }
+        );
+        return true;
+      }
       try {
         const { id } = await manager.start({
           gptUrl: gpt,
           cursorUrl: cursor,
           startedBy: `telegram:${chatId}`,
         });
-        await tg.sendMessage(`Agent #${id} queued/running.\n/status ${id}`, { chatId });
+        await tg.sendMessage(
+          `Agent #${id} started (auto slot).\n/status ${id}\n/stop ${id}`,
+          { chatId }
+        );
       } catch (err) {
         await tg.sendMessage(`Could not start: ${err.message}`, { chatId });
       }
@@ -166,7 +177,6 @@ async function main() {
     const parsed = parseCommand(text);
 
     if (!parsed) {
-      // Continuation of /run flow — accept bare URLs
       if (pendingByChat.has(String(chatId)) || /https?:\/\//i.test(text)) {
         const handled = await tryStartRun(chatId, text);
         if (!handled) {
@@ -180,6 +190,7 @@ async function main() {
     }
 
     const { cmd, rest } = parsed;
+    const arg = rest.trim().split(/\s+/).filter(Boolean)[0] || "";
 
     if (cmd === "start" || cmd === "help") {
       await tg.sendMessage(helpText(), { chatId });
@@ -187,41 +198,51 @@ async function main() {
     }
 
     if (cmd === "status") {
-      const id = rest.trim().split(/\s+/)[0] || null;
-      await tg.sendMessage(manager.formatStatus(id), { chatId });
+      await tg.sendMessage(manager.formatStatus(arg || null), { chatId });
       return;
     }
 
-    if (cmd === "stop") {
-      const id = rest.trim().split(/\s+/)[0];
-      if (!id) {
-        await tg.sendMessage("Usage: /stop <id>\nOr /stopall", { chatId });
+    if (cmd === "stop" || cmd === "stopall") {
+      // /stop        → all
+      // /stop N      → one
+      // /stopall     → all (alias)
+      if (cmd === "stopall" || !arg) {
+        const stopped = await manager.stopAll();
+        await tg.sendMessage(
+          stopped.length
+            ? `Stopped agents: ${stopped.map((id) => `#${id}`).join(", ")}\n\n${manager.formatStatus()}`
+            : `No busy agents.\n\n${manager.formatStatus()}`,
+          { chatId }
+        );
         return;
       }
       try {
-        await manager.stop(id);
-        await tg.sendMessage(`Stop requested for #${id}\n${manager.formatStatus(id)}`, {
-          chatId,
-        });
+        await manager.stop(arg);
+        await tg.sendMessage(
+          `Stopped agent #${arg}\n\n${manager.formatStatus(arg)}`,
+          { chatId }
+        );
       } catch (err) {
         await tg.sendMessage(err.message, { chatId });
       }
       return;
     }
 
-    if (cmd === "stopall") {
-      await manager.stopAll();
-      await tg.sendMessage("Stop requested for all agents.", { chatId });
-      return;
-    }
-
     if (cmd === "run") {
+      const free = manager.nextFreeSlot();
+      if (!free) {
+        await tg.sendMessage(
+          `All ${config.maxAgents} agents busy.\n/status\n/stop N  or  /stop`,
+          { chatId }
+        );
+        return;
+      }
       if (rest.trim()) {
         const handled = await tryStartRun(chatId, rest);
         if (!handled) {
           pendingByChat.set(String(chatId), { step: "gpt" });
           await tg.sendMessage(
-            "Send the GPT chat URL, then the Cursor agent URL.\n(Or both in one message.)",
+            `Will use agent #${free}.\nSend GPT chat URL, then Cursor agent URL.\n(Or both in one message.)`,
             { chatId }
           );
         }
@@ -229,7 +250,7 @@ async function main() {
       }
       pendingByChat.set(String(chatId), { step: "gpt" });
       await tg.sendMessage(
-        "Send the GPT chat URL, then the Cursor agent URL.\n(Or both in one message.)",
+        `Will use agent #${free}.\nSend GPT chat URL, then Cursor agent URL.\n(Or both in one message.)`,
         { chatId }
       );
       return;
@@ -238,7 +259,6 @@ async function main() {
     await tg.sendMessage(`Unknown command /${cmd}\n\n${helpText()}`, { chatId });
   }
 
-  // Drop backlog so we only handle new messages after boot.
   try {
     const backlog = await tg.getUpdates({ timeout: 0 });
     for (const u of backlog || []) tg.markUpdate(u);
@@ -267,7 +287,6 @@ async function main() {
     } catch (err) {
       console.warn("Telegram poll error:", err.message || err);
       await new Promise((r) => setTimeout(r, 3000));
-      // Browser may have died while idle — keep CDP warm.
       try {
         await session.ensureConnected();
       } catch (e) {

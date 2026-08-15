@@ -88,17 +88,19 @@ npm run telegram
 
 ### Commands
 
+Fixed slots **1–5**. `/run` always takes the lowest free slot (1, then 2, … then 5).
+
 | Command | Meaning |
 |---------|---------|
-| `/run` | Start a run — then paste GPT + Cursor links |
-| `/run <gpt> <cursor>` | Start with both links in one message |
-| `/status` | Status of **all** agents |
-| `/status <id>` | Status of **one** agent |
-| `/stop <id>` | Stop one run |
-| `/stopall` | Stop every run |
+| `/status` | Status of **all 5** agents (idle + busy) |
+| `/status N` | Status of **one** agent (e.g. `/status 2`) |
+| `/run` | Start on next free slot — then paste GPT + Cursor links |
+| `/run <gpt> <cursor>` | Same, both links in one message |
+| `/stop` | Stop **all** agents |
+| `/stop N` | Stop **one** agent (e.g. `/stop 3`) |
 | `/help` | Command list |
 
-When a run hits **Automation Done**, Telegram gets a completion message automatically (also on failure).
+When a run hits **Automation Done**, Telegram gets a completion message automatically (also on failure). That slot becomes free for the next `/run`.
 
 ## Optional: Chrome instead
 

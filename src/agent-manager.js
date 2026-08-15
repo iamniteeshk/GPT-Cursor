@@ -1,9 +1,23 @@
 import { AgentRunner } from "./agent-runner.js";
 import { config } from "./config.js";
 
+const ACTIVE = new Set([
+  "running",
+  "starting",
+  "waiting_cursor",
+  "waiting_gpt",
+  "reconnecting",
+  "stopping",
+]);
+
+function isActiveStatus(status) {
+  return ACTIVE.has(status);
+}
+
 /**
- * Up to MAX_AGENTS concurrent GPT↔Cursor runs on one shared Chrome/Edge.
- * Each run uses 2 tabs → 5 agents = 10 tabs.
+ * Fixed agent slots 1..MAX_AGENTS (default 5).
+ * /run picks the lowest free slot: 1, then 2, … then 5.
+ * Each slot uses 2 tabs → 5 agents = 10 tabs.
  */
 export class AgentManager {
   /**
@@ -18,20 +32,77 @@ export class AgentManager {
     this.onEvent = typeof onEvent === "function" ? onEvent : async () => {};
     /** @type {Map<string, { runner: AgentRunner, promise: Promise<any>, startedAt: number, startedBy: string }>} */
     this.agents = new Map();
-    this._seq = 0;
+  }
+
+  /** First free slot id "1".."max", or null if all busy. */
+  nextFreeSlot() {
+    for (let n = 1; n <= this.maxAgents; n += 1) {
+      const id = String(n);
+      const entry = this.agents.get(id);
+      if (!entry || !isActiveStatus(entry.runner.status)) {
+        return id;
+      }
+    }
+    return null;
+  }
+
+  listSlots() {
+    const out = [];
+    for (let n = 1; n <= this.maxAgents; n += 1) {
+      const id = String(n);
+      const entry = this.agents.get(id);
+      if (!entry) {
+        out.push({
+          id,
+          status: "idle",
+          loop: 0,
+          promptNumber: 0,
+          gptUrl: "",
+          cursorUrl: "",
+          lastError: "",
+          startedAt: null,
+          finishedAt: null,
+          stopRequested: false,
+          startedBy: "",
+          wallStartedAt: null,
+        });
+        continue;
+      }
+      out.push({
+        ...entry.runner.snapshot(),
+        startedBy: entry.startedBy,
+        wallStartedAt: entry.startedAt,
+      });
+    }
+    return out;
   }
 
   list() {
-    return [...this.agents.entries()].map(([id, entry]) => ({
-      ...entry.runner.snapshot(),
-      startedBy: entry.startedBy,
-      wallStartedAt: entry.startedAt,
-    }));
+    return this.listSlots().filter((a) => a.status !== "idle");
   }
 
   get(id) {
-    const entry = this.agents.get(String(id));
-    if (!entry) return null;
+    const key = String(id).trim();
+    if (!key) return null;
+    const n = Number(key);
+    if (!Number.isFinite(n) || n < 1 || n > this.maxAgents) return null;
+    const entry = this.agents.get(String(n));
+    if (!entry) {
+      return {
+        id: String(n),
+        status: "idle",
+        loop: 0,
+        promptNumber: 0,
+        gptUrl: "",
+        cursorUrl: "",
+        lastError: "",
+        startedAt: null,
+        finishedAt: null,
+        stopRequested: false,
+        startedBy: "",
+        wallStartedAt: null,
+      };
+    }
     return {
       ...entry.runner.snapshot(),
       startedBy: entry.startedBy,
@@ -40,22 +111,20 @@ export class AgentManager {
   }
 
   activeCount() {
-    return [...this.agents.values()].filter((e) => {
-      const s = e.runner.status;
-      return s === "running" || s === "starting" || s === "waiting_cursor" || s === "waiting_gpt" || s === "reconnecting" || s === "stopping";
-    }).length;
+    return this.listSlots().filter((a) => isActiveStatus(a.status)).length;
   }
 
   async start({ gptUrl, cursorUrl, startedBy = "cli" } = {}) {
-    this._pruneFinished();
-    if (this.activeCount() >= this.maxAgents) {
+    const id = this.nextFreeSlot();
+    if (!id) {
       throw new Error(
-        `Already running ${this.activeCount()}/${this.maxAgents} agents (10 tabs max). Stop one with /stop <id>.`
+        `All ${this.maxAgents} agents busy (10 tabs). Stop one with /stop N or /stop for all.`
       );
     }
 
-    this._seq += 1;
-    const id = String(this._seq);
+    // Clear finished occupant of this slot before reuse.
+    this.agents.delete(id);
+
     const runner = new AgentRunner({
       id,
       gptUrl,
@@ -78,9 +147,7 @@ export class AgentManager {
     const promise = runner
       .start()
       .then(async (result) => {
-        if (result?.completed) {
-          // agent_done already emitted from log line; ensure once more if needed
-        } else if (result?.stopped) {
+        if (result?.stopped) {
           await this.onEvent("agent_stopped", {
             agentId: id,
             gptUrl,
@@ -101,9 +168,6 @@ export class AgentManager {
           loops: runner.loop,
         });
         throw err;
-      })
-      .finally(() => {
-        setTimeout(() => this._pruneFinished(true), 30 * 60 * 1000).unref?.();
       });
 
     this.agents.set(id, {
@@ -128,8 +192,12 @@ export class AgentManager {
   }
 
   async stop(id) {
-    const entry = this.agents.get(String(id));
-    if (!entry) throw new Error(`Unknown agent id: ${id}`);
+    const key = String(id).trim();
+    const entry = this.agents.get(key);
+    if (!entry) throw new Error(`Agent #${key} is idle / unknown. Use /status`);
+    if (!isActiveStatus(entry.runner.status) && entry.runner.status !== "stopping") {
+      throw new Error(`Agent #${key} is not running (status: ${entry.runner.status}).`);
+    }
     entry.runner.requestStop();
     try {
       await entry.promise;
@@ -140,7 +208,9 @@ export class AgentManager {
   }
 
   async stopAll() {
-    const ids = [...this.agents.keys()];
+    const ids = this.listSlots()
+      .filter((a) => isActiveStatus(a.status))
+      .map((a) => a.id);
     for (const id of ids) {
       try {
         await this.stop(id);
@@ -148,44 +218,34 @@ export class AgentManager {
         // ignore
       }
     }
+    return ids;
   }
 
   formatStatus(id = null) {
     if (id != null && String(id).trim() !== "") {
-      const one = this.get(String(id).trim());
-      if (!one) return `No agent with id ${id}.\n\n${this.formatStatus()}`;
+      const key = String(id).trim();
+      const one = this.get(key);
+      if (!one) {
+        return `Invalid agent #${key}. Use 1–${this.maxAgents}.\n\n${this.formatStatus()}`;
+      }
       return formatOne(one);
     }
-    const all = this.list();
-    if (!all.length) {
-      return `No agents yet.\nMax ${this.maxAgents} concurrent (= ${this.maxAgents * 2} tabs).\nStart: /run`;
-    }
-    return [
-      `Agents: ${this.activeCount()} active / ${all.length} tracked (max ${this.maxAgents})`,
-      "",
-      ...all.map(formatOne),
-    ].join("\n");
-  }
 
-  _pruneFinished(force = false) {
-    const now = Date.now();
-    for (const [id, entry] of this.agents.entries()) {
-      const st = entry.runner.status;
-      if (["running", "starting", "waiting_cursor", "waiting_gpt", "reconnecting", "stopping"].includes(st)) {
-        continue;
-      }
-      const finishedAt = entry.runner.finishedAt
-        ? Date.parse(entry.runner.finishedAt)
-        : entry.startedAt;
-      const age = now - (finishedAt || now);
-      if (force || age > 30 * 60 * 1000) {
-        this.agents.delete(id);
-      }
-    }
+    const slots = this.listSlots();
+    return [
+      `Agents ${this.activeCount()}/${this.maxAgents} busy · ${this.maxAgents * 2} tabs max`,
+      "",
+      ...slots.map(formatOne),
+      "",
+      "Commands: /run  /status  /status N  /stop  /stop N",
+    ].join("\n");
   }
 }
 
 function formatOne(a) {
+  if (a.status === "idle") {
+    return `#${a.id} [idle]`;
+  }
   const started = a.wallStartedAt || (a.startedAt ? Date.parse(a.startedAt) : null);
   const age = started ? `${Math.round((Date.now() - started) / 60000)}m ago` : "?";
   const err = a.lastError ? `\n  error: ${a.lastError}` : "";

@@ -106,6 +106,19 @@ const sample = splitGptCursorUrls(
 assert(sample.gptUrl.includes("chatgpt.com"), "telegram URL parse gpt");
 assert(sample.cursorUrl.includes("cursor.com/agents/bc-xyz"), "telegram URL parse cursor");
 
+// Slot allocator: lowest free among 1..5
+function nextFreeSlot(busySet, max = 5) {
+  for (let n = 1; n <= max; n += 1) {
+    if (!busySet.has(String(n))) return String(n);
+  }
+  return null;
+}
+assert(nextFreeSlot(new Set()) === "1", "first run uses slot 1");
+assert(nextFreeSlot(new Set(["1"])) === "2", "second run uses slot 2");
+assert(nextFreeSlot(new Set(["1", "2", "3", "4"])) === "5", "fifth run uses slot 5");
+assert(nextFreeSlot(new Set(["1", "2", "3", "4", "5"])) === null, "all busy");
+assert(nextFreeSlot(new Set(["1", "3"])) === "2", "fills lowest gap");
+
 const requiredFiles = [
   "src/index.js",
   "src/telegram-main.js",
