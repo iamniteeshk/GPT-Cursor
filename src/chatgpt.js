@@ -262,73 +262,180 @@ export function isAutomationComplete(assistantText, stopPhrase = "Automation Don
 }
 
 export async function sendToChatGpt(page, { text, imagePaths = [] }) {
+  const progress = async (line) => {
+    console.log(line);
+    if (typeof page.__onGptProgress === "function") {
+      try {
+        await page.__onGptProgress(line);
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  await page.bringToFront().catch(() => {});
   await dismissBlockingUi(page, { label: "ChatGPT" });
   await waitForChatReady(page);
-  const composer = await getComposer(page);
+  let composer = await getComposer(page);
   if (!composer) throw new Error("ChatGPT composer not found. Are you logged in?");
 
-  // Put text first, then attach images (more reliable with ChatGPT composer).
-  await composer.click({ timeout: 10_000 });
-  await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
-  await page.keyboard.press("Backspace");
+  await progress(`GPT: pasting Cursor output (${String(text || "").length} chars)…`);
 
-  await composer.evaluate((el, value) => {
-    if (el.tagName === "TEXTAREA" || el.tagName === "INPUT") {
-      el.value = value;
-      el.dispatchEvent(new Event("input", { bubbles: true }));
-      return;
-    }
-    el.focus();
-    document.execCommand("selectAll", false);
-    document.execCommand("insertText", false, value);
-  }, text);
+  // Clear + paste. Prefer Playwright insertText (reliable on ProseMirror); fallback clipboard.
+  await fillChatGptComposer(page, composer, text);
 
-  await sleep(400);
-
-  if (imagePaths.length) {
-    const fileInput = page.locator('input[type="file"]').first();
-    if (await fileInput.count()) {
-      await fileInput.setInputFiles(imagePaths);
-      await sleep(2000);
-    } else {
-      console.warn("No file input found for ChatGPT image upload. Sending text only.");
-    }
+  let filled = await readComposerText(page, composer);
+  if (!filled || filled.length < Math.min(40, String(text).length / 4)) {
+    await progress("GPT: paste looked empty — retrying via clipboard…");
+    composer = (await getComposer(page)) || composer;
+    await fillChatGptComposer(page, composer, text, { forceClipboard: true });
+    filled = await readComposerText(page, composer);
   }
 
-  const sendButton = page
-    .locator(
-      'button[data-testid="send-button"], button[aria-label="Send prompt"], button[aria-label="Send message"], button[aria-label*="Send message" i]'
-    )
-    .filter({
-      hasNot: page.locator('[aria-label*="Remove" i], [aria-label*="Open image" i]'),
-    })
-    .last();
+  if (!filled || filled.length < 10) {
+    throw new Error(
+      "ChatGPT composer stayed empty after paste. Click the GPT tab and check the composer."
+    );
+  }
+  await progress(`GPT: composer has ${filled.length} chars — sending…`);
 
-  let sent = false;
-  if (await sendButton.isVisible().catch(() => false)) {
+  // Images are optional; never block the text send if upload hangs.
+  const usableImages = (imagePaths || []).filter(Boolean).slice(0, 3);
+  if (usableImages.length) {
     try {
-      await sendButton.click({ timeout: 8_000 });
-      sent = true;
+      await progress(`GPT: attaching ${usableImages.length} image(s)…`);
+      const fileInput = page.locator('input[type="file"]').first();
+      if (await fileInput.count()) {
+        await Promise.race([
+          fileInput.setInputFiles(usableImages),
+          sleep(20_000).then(() => {
+            throw new Error("image upload timed out");
+          }),
+        ]);
+        await sleep(1500);
+      } else {
+        await progress("GPT: no file input — sending text only");
+      }
     } catch (error) {
-      console.warn(
-        `ChatGPT send button click failed (${error.message.split("\n")[0]}). Falling back to Enter.`
-      );
+      await progress(`GPT: image attach skipped (${error.message}) — sending text only`);
     }
   }
 
-  if (!sent) {
-    await composer.click({ timeout: 5_000 }).catch(() => {});
-    await page.keyboard.press("Enter");
-  }
+  composer = (await getComposer(page)) || composer;
+  const sent = await clickChatGptSend(page, composer);
+  await progress(sent ? "GPT: send clicked" : "GPT: send via Enter");
 
   await waitForGptReplySettled(page, {
     onProgress: async (line) => {
-      // Optional hook for agent runner / Telegram progress.
       if (typeof page.__onGptProgress === "function") {
         await page.__onGptProgress(line);
       }
     },
   });
+}
+
+async function readComposerText(page, composer) {
+  try {
+    return (
+      (await composer.evaluate((el) => {
+        if (el.tagName === "TEXTAREA" || el.tagName === "INPUT") return el.value || "";
+        return (el.innerText || el.textContent || "").trim();
+      })) || ""
+    ).trim();
+  } catch {
+    return "";
+  }
+}
+
+async function fillChatGptComposer(page, composer, text, { forceClipboard = false } = {}) {
+  const value = String(text || "");
+  await composer.click({ timeout: 10_000 });
+  await sleep(200);
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
+  await page.keyboard.press("Backspace");
+  await sleep(150);
+
+  if (!forceClipboard) {
+    // Fast path — works on most ChatGPT composer builds.
+    try {
+      await page.keyboard.insertText(value);
+      await sleep(300);
+      return;
+    } catch (error) {
+      console.warn(`insertText failed (${error.message.split("\n")[0]}). Trying clipboard.`);
+    }
+  }
+
+  // Clipboard paste fallback (Windows/Edge friendly).
+  try {
+    await page.evaluate(async (t) => {
+      await navigator.clipboard.writeText(t);
+    }, value);
+  } catch {
+    // grant clipboard via CDP-ish fallback: use execCommand copy from a temp
+    await page.evaluate((t) => {
+      const ta = document.createElement("textarea");
+      ta.value = t;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }, value);
+  }
+  await composer.click({ timeout: 5_000 }).catch(() => {});
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+V" : "Control+V");
+  await sleep(500);
+
+  // Last resort: direct DOM write + input events
+  const now = await readComposerText(page, composer);
+  if (!now || now.length < 10) {
+    await composer.evaluate((el, t) => {
+      el.focus();
+      if (el.tagName === "TEXTAREA" || el.tagName === "INPUT") {
+        el.value = t;
+      } else {
+        el.textContent = "";
+        el.innerHTML = "";
+        // ProseMirror-ish: try insertText again inside page
+        document.execCommand("selectAll", false);
+        document.execCommand("insertText", false, t);
+        if (!(el.innerText || "").trim()) {
+          el.textContent = t;
+        }
+      }
+      el.dispatchEvent(new InputEvent("input", { bubbles: true, data: t, inputType: "insertText" }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    }, value);
+    await sleep(300);
+  }
+}
+
+async function clickChatGptSend(page, composer) {
+  const selectors = [
+    'button[data-testid="send-button"]',
+    'button[aria-label="Send prompt"]',
+    'button[aria-label="Send message"]',
+    'button[aria-label*="Send message" i]',
+    'button[aria-label*="Send prompt" i]',
+  ];
+
+  for (const sel of selectors) {
+    const btn = page.locator(sel).last();
+    if (!(await btn.isVisible().catch(() => false))) continue;
+    const disabled = await btn.isDisabled().catch(() => false);
+    if (disabled) continue;
+    try {
+      await btn.click({ timeout: 8_000 });
+      return true;
+    } catch (error) {
+      console.warn(`Send click failed on ${sel}: ${error.message.split("\n")[0]}`);
+    }
+  }
+
+  // Composer Enter (ChatGPT usually sends on Enter)
+  await composer.click({ timeout: 5_000 }).catch(() => {});
+  await page.keyboard.press("Enter");
+  return false;
 }
 
 async function gptStopButtonVisible(page) {
@@ -379,8 +486,8 @@ async function waitForGptReplySettled(page, { onProgress = null } = {}) {
       const soft = await detectGptSoftError(page);
       if (soft) throw new Error(soft);
 
-      const stop = page.getByRole("button", { name: /stop/i }).first();
-      if (await stop.isVisible().catch(() => false)) return true;
+      const stop = await gptStopButtonVisible(page);
+      if (stop) return true;
       const current = await readAssistantOnce(page);
       return current && current !== startedText && current.length > startedText.length;
     },
@@ -395,8 +502,7 @@ async function waitForGptReplySettled(page, { onProgress = null } = {}) {
       const soft = await detectGptSoftError(page);
       if (soft) throw new Error(soft);
 
-      const stop = page.getByRole("button", { name: /stop/i }).first();
-      const stopVisible = await stop.isVisible().catch(() => false);
+      const stopVisible = await gptStopButtonVisible(page);
       const streaming = page.locator('[data-testid="streaming"], .result-streaming');
       const streamingVisible = await streaming.first().isVisible().catch(() => false);
 

@@ -266,11 +266,22 @@ export class AgentRunner {
             cursorText,
             "utf8"
           );
-          const images = await captureCursorImages(
-            activeCursorPage,
-            `agent-${this.id}-loop-${this.loop}`
+          await this.emit(`Cursor done (${cursorText.length} chars). Capturing images…`);
+          let images = [];
+          try {
+            images = await Promise.race([
+              captureCursorImages(activeCursorPage, `agent-${this.id}-loop-${this.loop}`),
+              sleep(45_000).then(() => {
+                throw new Error("image capture timed out");
+              }),
+            ]);
+          } catch (error) {
+            await this.emit(`Image capture skipped (${error.message}). Sending text only.`);
+            images = [];
+          }
+          await this.emit(
+            `Opening GPT to paste Cursor output (${cursorText.length} chars, ${images.length} img)…`
           );
-          await this.emit(`Cursor done (${cursorText.length} chars). Sending to GPT…`);
 
           const followUp = buildGptFollowUp({
             cursorText,
@@ -281,7 +292,6 @@ export class AgentRunner {
           });
 
           this.status = "waiting_gpt";
-          await this.emit(`Waiting on GPT after Prompt #${this.promptNumber}`);
           await openChatGpt(gptPage, { gptUrl: this.gptUrl });
           gptPage.__onGptProgress = async (line) => {
             await this.emit(line);

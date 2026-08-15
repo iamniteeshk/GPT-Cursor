@@ -396,26 +396,32 @@ export async function getLatestCursorText(page) {
 
 export async function captureCursorImages(page, loopIndex) {
   const saved = [];
+  // Keep this fast — GPT handoff must not stall on screenshot scraping.
   const images = page.locator("img");
   const count = await images.count().catch(() => 0);
-  for (let i = 0; i < Math.min(count, 30); i += 1) {
+  for (let i = 0; i < Math.min(count, 8); i += 1) {
     const img = images.nth(i);
     if (!(await img.isVisible().catch(() => false))) continue;
-    const box = await img.boundingBox();
-    if (!box || box.width < 80 || box.height < 80) continue;
-    const src = (await img.getAttribute("src")) || "";
-    if (/avatar|icon|logo|favicon/i.test(src)) continue;
-    const file = artifactPath(`cursor-loop-${loopIndex}-img-${i + 1}.png`);
+    const box = await img.boundingBox().catch(() => null);
+    if (!box || box.width < 120 || box.height < 120) continue;
+    const src = (await img.getAttribute("src").catch(() => "")) || "";
+    if (/avatar|icon|logo|favicon|emoji|data:image\/svg/i.test(src)) continue;
+    const file = artifactPath(`cursor-loop-${loopIndex}-img-${saved.length + 1}.png`);
     try {
-      await img.screenshot({ path: file });
+      await img.screenshot({ path: file, timeout: 5000 });
       saved.push(file);
     } catch {
       // ignore
     }
+    if (saved.length >= 2) break;
   }
   const summary = artifactPath(`cursor-loop-${loopIndex}-response.png`);
-  await page.screenshot({ path: summary, fullPage: false });
-  saved.push(summary);
+  try {
+    await page.screenshot({ path: summary, fullPage: false, timeout: 8000 });
+    saved.push(summary);
+  } catch {
+    // ignore
+  }
   return saved;
 }
 
