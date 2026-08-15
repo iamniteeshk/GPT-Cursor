@@ -1,4 +1,4 @@
-# Start Chrome with remote debugging for GPT↔Cursor automation (Windows / NUC).
+# Start Chrome with remote debugging for GPT-Cursor automation (Windows / NUC).
 # Newer Chrome requires a NON-default user-data-dir for remote debugging.
 
 param(
@@ -71,7 +71,7 @@ if (Test-ChromeRunning) {
 }
 
 if (Test-CdpReady) {
-  Write-Host "Port $Port already has CDP. OK — run: npm start"
+  Write-Host "Port $Port already has CDP. OK - run: npm start"
   exit 0
 }
 

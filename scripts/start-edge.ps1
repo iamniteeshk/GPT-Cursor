@@ -1,4 +1,4 @@
-# Start Microsoft Edge with remote debugging for GPT↔Cursor automation (Windows / NUC).
+# Start Microsoft Edge with remote debugging for GPT-Cursor automation (Windows / NUC).
 # Uses a copy of your existing Edge profile in %USERPROFILE%\.gpt-cursor-edge
 # (Edge blocks remote debugging on the default profile directory).
 
@@ -73,7 +73,7 @@ if (Test-EdgeRunning) {
 }
 
 if (Test-CdpReady) {
-  Write-Host "Port $Port already has CDP. OK — run: npm start"
+  Write-Host "Port $Port already has CDP. OK - run: npm start"
   exit 0
 }
 
