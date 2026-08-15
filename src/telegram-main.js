@@ -33,13 +33,16 @@ function helpText() {
     "Commands:",
     "/status — status of all agents",
     "/status N — status of one agent (e.g. /status 2)",
-    "/run — start on next free slot (then send 2 links)",
-    "/run <gpt_url> <cursor_url>",
+    "/run — start on next free slot",
+    "/run <gpt_url> <cursor_url> — best for groups (both links in one msg)",
     "/stop — stop ALL agents",
     "/stop N — stop one agent (e.g. /stop 3)",
     "/help — this message",
     "",
-    "You get a Telegram message when Automation Done.",
+    "Group tip: put both links in the /run message,",
+    "or disable bot privacy in @BotFather (/setprivacy → Disable).",
+    "",
+    "You get a message here when Automation Done.",
   ].join("\n");
 }
 
