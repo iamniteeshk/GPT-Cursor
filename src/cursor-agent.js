@@ -32,8 +32,9 @@ export function resolvePromptNumber(assistantText, loopIndex) {
   return Math.max(...nums);
 }
 
-export async function resolveCursorPage(context, preferredPage = null) {
-  const agentId = agentIdFromUrl();
+export async function resolveCursorPage(context, preferredPage = null, cursorUrl = config.cursorUrl) {
+  const target = cursorUrl || config.cursorUrl;
+  const agentId = agentIdFromUrl(target);
   const pages = context.pages().filter((p) => {
     try {
       return !p.isClosed();
@@ -52,7 +53,7 @@ export async function resolveCursorPage(context, preferredPage = null) {
   if (agents) {
     await agents.bringToFront().catch(() => {});
     if (!agents.url().includes(agentId)) {
-      await agents.goto(config.cursorUrl, { waitUntil: "domcontentloaded" }).catch(() => {});
+      await agents.goto(target, { waitUntil: "domcontentloaded" }).catch(() => {});
       await sleep(2000);
     }
     return agents;
@@ -60,21 +61,22 @@ export async function resolveCursorPage(context, preferredPage = null) {
 
   if (preferredPage && !preferredPage.isClosed()) {
     await preferredPage.bringToFront().catch(() => {});
-    await preferredPage.goto(config.cursorUrl, { waitUntil: "domcontentloaded" }).catch(() => {});
+    await preferredPage.goto(target, { waitUntil: "domcontentloaded" }).catch(() => {});
     await sleep(2000);
     return preferredPage;
   }
 
   const page = await context.newPage();
-  await page.goto(config.cursorUrl, { waitUntil: "domcontentloaded" });
+  await page.goto(target, { waitUntil: "domcontentloaded" });
   await sleep(2000);
   return page;
 }
 
-export async function openCursorAgent(page) {
+export async function openCursorAgent(page, cursorUrl = config.cursorUrl) {
+  const target = cursorUrl || config.cursorUrl;
   await installDialogHandlers(page);
-  if (!page.url().includes(agentIdFromUrl())) {
-    await page.goto(config.cursorUrl, { waitUntil: "domcontentloaded" });
+  if (!page.url().includes(agentIdFromUrl(target))) {
+    await page.goto(target, { waitUntil: "domcontentloaded" });
     await sleep(2500);
   } else {
     await page.bringToFront().catch(() => {});
@@ -250,11 +252,17 @@ export async function sendPromptToCursor(page, prompt, loopIndex) {
  * (our sent instruction already contains one copy — that alone is not done).
  * Also watches Send↔Stop button transitions every pollIntervalMs (default 60s).
  */
-export async function waitForCursorReply(page, previousText, context, loopIndex) {
+export async function waitForCursorReply(
+  page,
+  previousText,
+  context,
+  loopIndex,
+  cursorUrl = config.cursorUrl
+) {
   let active = page;
   // Let the UI flip to Stop after send before taking baseline.
   await sleep(5000);
-  if (context) active = await resolveCursorPage(context, active);
+  if (context) active = await resolveCursorPage(context, active, cursorUrl);
 
   const baselineText = await collectPageText(active);
   const baselineWorkedFor = extractWorkedFor(baselineText);
@@ -274,7 +282,7 @@ export async function waitForCursorReply(page, previousText, context, loopIndex)
     "Cursor agent reply",
     config.cursorReplyTimeoutMs,
     async () => {
-      if (context) active = await resolveCursorPage(context, active);
+      if (context) active = await resolveCursorPage(context, active, cursorUrl);
       await dismissBlockingUi(active, { label: "Cursor" }).catch(() => {});
 
       const blocker = await detectHardBlocker(active);

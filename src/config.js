@@ -58,6 +58,8 @@ export const config = {
   cdpUrl: process.env.CDP_URL || "http://127.0.0.1:9222",
   stopPhrase: process.env.STOP_PHRASE || "Automation Done",
   browserName,
+  // Up to 5 concurrent GPT↔Cursor pairs = 10 browser tabs
+  maxAgents: Math.min(10, Math.max(1, num("MAX_AGENTS", 5))),
   // Cursor: 60 minutes, GPT: 20 minutes, poll every 60s
   cursorReplyTimeoutMs: num("CURSOR_REPLY_TIMEOUT_MS", 3_600_000),
   gptReplyTimeoutMs: num("GPT_REPLY_TIMEOUT_MS", 1_200_000),

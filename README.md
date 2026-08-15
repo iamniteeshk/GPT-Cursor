@@ -8,11 +8,18 @@ Desktop only — not iOS.
 
 ## What it does
 
-1. Asks for **GPT chat URL** + **Cursor agent URL** each run
+1. Asks for **GPT chat URL** + **Cursor agent URL** (terminal or Telegram)
 2. Copies GPT’s prompt into Cursor
 3. Waits until Cursor finishes (`Prompt N Completed` + Send↔Stop)
 4. Pastes Cursor text/screenshots back to GPT
 5. Repeats until GPT replies with only `Automation Done`
+6. On browser crash/CDP drop: reconnects and reopens that agent’s tabs (up to 4 tries)
+
+## Multi-agent (5 agents / 10 tabs)
+
+Up to **5** concurrent GPT↔Cursor pairs share one debug browser (= **10 tabs**).
+
+Control from your phone with Telegram (`npm run telegram`).
 
 ## Timeouts
 
@@ -21,6 +28,7 @@ Desktop only — not iOS.
 | Cursor wait | **60 minutes** |
 | GPT wait | **20 minutes** |
 | Poll | **every 60 seconds** |
+| Max agents | **5** (`MAX_AGENTS`) |
 
 ## Preflight
 
@@ -49,15 +57,48 @@ npm start
 4. Confirm: `Timeouts: Cursor 60m | GPT 20m | poll 60s`
 5. Keep the NUC awake
 
-## macOS (Edge)
+## macOS (Edge or Chrome)
 
 ```bash
 git pull
 npm install
 cp -n .env.example .env
 bash scripts/start-edge.sh
+# or: BROWSER=chrome bash scripts/start-chrome.sh
 npm start
 ```
+
+## Telegram listener (phone control)
+
+Put secrets in `.env` or `secrets.local.json` **before** starting (code is ready; you fill tokens):
+
+```env
+TELEGRAM_BOT_TOKEN=123:ABC...
+TELEGRAM_CHAT_ID=your_chat_id
+MAX_AGENTS=5
+```
+
+```bash
+# Terminal 1 — debug browser must stay open
+bash scripts/start-chrome.sh   # or start-edge.sh / .ps1
+
+# Terminal 2
+npm run telegram
+```
+
+### Commands
+
+| Command | Meaning |
+|---------|---------|
+| `/run` | Start a run — then paste GPT + Cursor links |
+| `/run <gpt> <cursor>` | Start with both links in one message |
+| `/status` | Status of **all** agents |
+| `/status <id>` | Status of **one** agent |
+| `/stop <id>` | Stop one run |
+| `/stopall` | Stop every run |
+| `/help` | Command list |
+
+When a run hits **Automation Done**, Telegram gets a completion message automatically (also on failure).
 
 ## Optional: Chrome instead
 
@@ -75,12 +116,12 @@ Then use `.\scripts\start-chrome.ps1` / `bash scripts/start-chrome.sh`.
 - Fallback: Stop→Send + new `Worked for …`
 - **Automation Done** only stops if GPT is not also giving a next Prompt N
 
-## Optional Telegram
+## Browser crash note
 
-`.env` or `secrets.local.json` — if missing, continue without pausing.
+If you see `Target page, context or browser has been closed`, the debug browser quit or CDP died (sleep, crash, manual close). Keep the debug window open; the runner will reconnect and reopen tabs when possible. Restart `start-*.sh/.ps1` if CDP never comes back.
 
 ## Notes
 
 - Debug profile: `~/.gpt-cursor-edge` (Mac) / `%USERPROFILE%\.gpt-cursor-edge` (Windows)
 - Soft popups auto-dismiss; GitHub/Cloudflare/Agent-blocked pause with a message
-- Artifacts: `artifacts/`
+- Artifacts: `artifacts/` (per-agent under `artifacts/agent-<id>/`)

@@ -2,14 +2,16 @@ import { config } from "./config.js";
 import { sleep, waitUntil } from "./browser.js";
 import { dismissBlockingUi, installDialogHandlers } from "./popups.js";
 
-export async function openChatGpt(page, { forceReload = false } = {}) {
+export async function openChatGpt(page, { forceReload = false, gptUrl = config.gptUrl } = {}) {
   await installDialogHandlers(page);
+  const target = gptUrl || config.gptUrl;
+  if (!target) throw new Error("GPT URL is not set");
+  const chatId = target.split("/c/")[1]?.split("?")[0] || "___never___";
   const alreadyThere =
-    page.url().includes("chatgpt.com/c/") &&
-    page.url().includes(config.gptUrl.split("/c/")[1]?.split("?")[0] || "___never___");
+    page.url().includes("chatgpt.com") && page.url().includes(chatId);
 
   if (!alreadyThere || forceReload) {
-    await page.goto(config.gptUrl, { waitUntil: "domcontentloaded", timeout: 120_000 });
+    await page.goto(target, { waitUntil: "domcontentloaded", timeout: 120_000 });
   } else {
     await page.bringToFront();
   }
@@ -62,12 +64,12 @@ export async function isChatGptLoggedIn(page) {
   return Boolean(composer);
 }
 
-export async function waitForChatGptLogin(page) {
+export async function waitForChatGptLogin(page, gptUrl = config.gptUrl) {
   console.log("Waiting for ChatGPT login...");
-  console.log("Log in in the Chrome window, then this script will continue automatically.");
+  console.log("Log in in the browser window, then this script will continue automatically.");
   await waitUntil("ChatGPT login", config.loginWaitMs, async () => {
-    if (page.url() !== config.gptUrl && !page.url().includes("chatgpt.com/c/")) {
-      await openChatGpt(page, { forceReload: true });
+    if (!page.url().includes("chatgpt.com")) {
+      await openChatGpt(page, { forceReload: true, gptUrl });
     }
     return isChatGptLoggedIn(page);
   });

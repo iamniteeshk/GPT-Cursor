@@ -21,6 +21,15 @@ const fileSecrets = readJsonSecrets();
  * Priority: process.env / .env  >  secrets.local.json
  * Missing values are fine — automation proceeds normally.
  */
+function splitIds(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.map(String);
+  return String(value)
+    .split(/[,\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export const secrets = {
   telegramBotToken:
     process.env.TELEGRAM_BOT_TOKEN ||
@@ -32,6 +41,12 @@ export const secrets = {
     fileSecrets.telegramChatId ||
     fileSecrets.TELEGRAM_CHAT_ID ||
     "",
+  telegramAllowedChatIds: splitIds(
+    process.env.TELEGRAM_ALLOWED_CHAT_IDS ||
+      fileSecrets.telegramAllowedChatIds ||
+      fileSecrets.TELEGRAM_ALLOWED_CHAT_IDS ||
+      ""
+  ),
 };
 
 export function hasTelegramSecrets() {

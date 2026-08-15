@@ -1,12 +1,14 @@
 {
   "name": "gpt-cursor",
-  "version": "1.3.0",
-  "description": "Automate GPT ↔ Cursor agent copy-paste workflow using your Edge/Chrome profile (no APIs). macOS + Windows.",
+  "version": "1.4.0",
+  "description": "Automate GPT ↔ Cursor agent copy-paste workflow using your Edge/Chrome profile (no APIs). macOS + Windows. Telegram multi-agent (up to 5 = 10 tabs).",
   "type": "module",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "automate": "node src/index.js",
+    "telegram": "node src/telegram-main.js",
+    "bot": "node src/telegram-main.js",
     "check-login": "node src/index.js --check-login",
     "self-check": "node scripts/self-check.mjs",
     "setup:mac": "bash scripts/setup-mac.sh",

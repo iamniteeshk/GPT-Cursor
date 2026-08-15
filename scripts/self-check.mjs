@@ -92,8 +92,27 @@ assert(
   "marker counting"
 );
 
+function splitGptCursorUrls(text) {
+  const matches = String(text || "").match(/https?:\/\/[^\s<>"']+/gi) || [];
+  const urls = matches.map((u) => u.replace(/[),.;]+$/, ""));
+  const gpt = urls.find((u) => /chatgpt\.com/i.test(u)) || "";
+  const cursor = urls.find((u) => /cursor\.com/i.test(u)) || "";
+  return { gptUrl: gpt, cursorUrl: cursor };
+}
+
+const sample = splitGptCursorUrls(
+  "go https://chatgpt.com/c/abc123 and https://cursor.com/agents/bc-xyz?branch=x"
+);
+assert(sample.gptUrl.includes("chatgpt.com"), "telegram URL parse gpt");
+assert(sample.cursorUrl.includes("cursor.com/agents/bc-xyz"), "telegram URL parse cursor");
+
 const requiredFiles = [
   "src/index.js",
+  "src/telegram-main.js",
+  "src/telegram.js",
+  "src/agent-manager.js",
+  "src/agent-runner.js",
+  "src/browser-session.js",
   "src/cursor-agent.js",
   "src/chatgpt.js",
   "src/browser.js",
@@ -111,5 +130,8 @@ const requiredFiles = [
 for (const rel of requiredFiles) {
   await fs.access(path.join(root, rel));
 }
+
+const pkg = JSON.parse(await fs.readFile(path.join(root, "package.json"), "utf8"));
+assert(pkg.scripts.telegram, "package.json must define telegram script");
 
 console.log("Self-check passed.");
