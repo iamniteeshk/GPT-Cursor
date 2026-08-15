@@ -72,15 +72,13 @@ export async function installDialogHandlers(page) {
 
 export async function denyBrowserPermissions(context) {
   try {
-    const origins = [
-      "https://chatgpt.com",
-      "https://chat.openai.com",
-      "https://cursor.com",
-      "https://www.cursor.com",
-    ];
-    for (const origin of origins) {
-      await context.clearPermissions().catch(() => {});
-      await context.grantPermissions([], { origin }).catch(() => {});
+    // Block noisy permissions, but allow clipboard so GPT paste works on Edge/Windows.
+    await context.clearPermissions().catch(() => {});
+    const chatgptOrigins = ["https://chatgpt.com", "https://chat.openai.com"];
+    for (const origin of chatgptOrigins) {
+      await context
+        .grantPermissions(["clipboard-read", "clipboard-write"], { origin })
+        .catch(() => {});
     }
   } catch {
     // ignore
