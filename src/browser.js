@@ -24,7 +24,7 @@ export async function connectBrowser() {
     const startCmd = isWin
       ? config.browserName === "chrome"
         ? "  .\\scripts\\start-chrome.ps1"
-        : "  .\\scripts\\start-edge.ps1"
+        : "  npm run edge:win   (or: powershell -ExecutionPolicy Bypass -File .\\scripts\\start-edge.ps1)"
       : config.browserName === "chrome"
         ? "  bash scripts/start-chrome.sh"
         : "  bash scripts/start-edge.sh";

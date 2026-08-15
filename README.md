@@ -47,9 +47,18 @@ cd GPT-Cursor
 git checkout cursor/gpt-cursor-automation-fb11
 powershell -ExecutionPolicy Bypass -File .\scripts\setup-windows.ps1
 npm run self-check
-.\scripts\start-edge.ps1
+npm run edge:win
 npm start
 ```
+
+Or explicitly:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-edge.ps1
+npm start
+```
+
+> Don’t double‑click `start-edge.ps1` / run it as a bare path if Windows opens **Notepad** — that means `.ps1` is associated with an editor. Use `npm run edge:win` or `powershell -File …` above.
 
 1. `start-edge.ps1` quits Edge, copies your Edge profile into `%USERPROFILE%\.gpt-cursor-edge`, opens debug Edge on port `9222`
 2. Log into ChatGPT + Cursor in that Edge window if needed
