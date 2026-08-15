@@ -68,15 +68,21 @@ bash scripts/start-edge.sh
 npm start
 ```
 
-## Telegram listener (phone control)
+## Telegram listener (phone / group control)
 
-Put secrets in `.env` or `secrets.local.json` **before** starting (code is ready; you fill tokens):
+Put secrets in `.env` or `secrets.local.json` **on the machine that runs the bot**:
 
 ```env
 TELEGRAM_BOT_TOKEN=123:ABC...
-TELEGRAM_CHAT_ID=your_chat_id
+TELEGRAM_CHAT_ID=-5161056514
 MAX_AGENTS=5
 ```
+
+- **Private chat:** open your bot (`t.me/YourBot`) and use that chat’s id (positive number).
+- **Group:** add the bot to the group. Chat id is **negative** (from Telegram Web: `web.telegram.org/k/#-5161056514` → `-5161056514`).
+
+**Group privacy:** In @BotFather → `/setprivacy` → **Disable**, so the bot can see pasted URLs after `/run`.  
+Or always send both links in one message: `/run <gpt_url> <cursor_url>`.
 
 ```bash
 # Terminal 1 — debug browser must stay open
@@ -85,6 +91,8 @@ bash scripts/start-chrome.sh   # or start-edge.sh / .ps1
 # Terminal 2
 npm run telegram
 ```
+
+Type commands in **that same group** (or private bot chat you configured).
 
 ### Commands
 
