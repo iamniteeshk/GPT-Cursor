@@ -244,9 +244,10 @@ export class AgentRunner {
           );
           await openCursorAgent(activeCursorPage, this.cursorUrl);
           await dismissBlockingUi(activeCursorPage, { label: "Cursor" });
-          const previousCursorText = await getLatestCursorText(activeCursorPage).catch(
-            () => ""
-          );
+          const previousCursorText = await getLatestCursorText(
+            activeCursorPage,
+            this.promptNumber
+          ).catch(() => "");
           await sendPromptToCursor(activeCursorPage, prompt, this.promptNumber);
           this.status = "waiting_cursor";
           await this.emit(`Waiting on Cursor for Prompt #${this.promptNumber}`);
@@ -259,7 +260,14 @@ export class AgentRunner {
               this.cursorUrl
             )) || activeCursorPage;
 
-          const cursorText = await getLatestCursorText(activeCursorPage);
+          const cursorText = await getLatestCursorText(
+            activeCursorPage,
+            this.promptNumber,
+            previousCursorText
+          );
+          await this.emit(
+            `Copied Cursor reply (${cursorText.length} chars). Preparing GPT paste…`
+          );
           await writeCursorDump(`agent-${this.id}-loop-${this.loop}`, cursorText);
           await fs.writeFile(
             path.join(agentDir, `cursor-loop-${this.loop}-text.txt`),

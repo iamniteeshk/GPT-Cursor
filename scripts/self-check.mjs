@@ -92,6 +92,67 @@ assert(
   "marker counting"
 );
 
+function assertPick(name, text, pred) {
+  assert(pred(text), name);
+}
+
+// Cursor reply picker: between instruction marker and completion marker
+function pickAssistantPayload(fullText, previousText = "", loopIndex = 1) {
+  const text = String(fullText || "").trim();
+  if (!text) return "";
+  const marker = `Prompt ${loopIndex} Completed`;
+  const lower = text.toLowerCase();
+  const markerLower = marker.toLowerCase();
+  const positions = [];
+  for (let i = 0; i < lower.length; ) {
+    const found = lower.indexOf(markerLower, i);
+    if (found < 0) break;
+    positions.push(found);
+    i = found + markerLower.length;
+  }
+  const MAX = 100_000;
+  if (positions.length >= 2) {
+    const last = positions[positions.length - 1];
+    const prev = positions[positions.length - 2];
+    let chunk = text.slice(prev + marker.length, last + marker.length + 40).trim();
+    chunk = chunk
+      .replace(/^then stop\.[^\n]*\n*/i, "")
+      .replace(/^do not wait for more instructions\.?\n*/i, "")
+      .trim();
+    if (chunk.length > 40) return chunk.slice(0, MAX);
+  }
+  if (positions.length === 1) {
+    const last = positions[0];
+    return text.slice(Math.max(0, last - MAX), last + marker.length + 40).trim().slice(0, MAX);
+  }
+  return text.slice(-MAX).trim();
+}
+
+const samplePage = [
+  "old history",
+  "USER:",
+  "do the work",
+  "When you fully finish this task, print exactly this line on its own:",
+  "Prompt 3 Completed",
+  "Then stop. Do not wait for more instructions.",
+  "ASSISTANT:",
+  "I fixed the bug and deployed.",
+  "Details about the change go here.",
+  "Prompt 3 Completed",
+].join("\n");
+
+const picked = pickAssistantPayload(samplePage, "", 3);
+assertPick(
+  "pickAssistantPayload should include assistant body",
+  picked,
+  (t) => /I fixed the bug and deployed/i.test(t) && /Prompt 3 Completed/i.test(t)
+);
+assertPick(
+  "pickAssistantPayload should not be only the instruction footer",
+  picked,
+  (t) => !/^Then stop/i.test(t.trim()) || /I fixed the bug/i.test(t)
+);
+
 function splitGptCursorUrls(text) {
   const matches = String(text || "").match(/https?:\/\/[^\s<>"']+/gi) || [];
   const urls = matches.map((u) => u.replace(/[),.;]+$/, ""));

@@ -147,6 +147,67 @@ export async function collectPageText(page) {
 }
 
 /**
+ * Prefer real assistant/message DOM nodes over raw body scrape.
+ * Cursor cloud UI changes often — keep selectors loose.
+ */
+async function collectAssistantDomText(page) {
+  try {
+    return await page.evaluate(() => {
+      const selectors = [
+        '[data-message-author-role="assistant"]',
+        '[data-role="assistant"]',
+        '[data-testid*="assistant" i]',
+        '[class*="assistant" i]',
+        'article',
+        '[class*="prose" i]',
+        '[class*="markdown" i]',
+      ];
+      const blocks = [];
+      for (const sel of selectors) {
+        for (const el of document.querySelectorAll(sel)) {
+          const t = (el.innerText || "").trim();
+          if (t.length > 80) blocks.push(t);
+        }
+      }
+      // Dedupe while preserving order
+      const seen = new Set();
+      const unique = [];
+      for (const b of blocks) {
+        const key = b.slice(0, 120);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        unique.push(b);
+      }
+      if (!unique.length) return "";
+      // Latest few assistant-ish blocks
+      return unique.slice(-4).join("\n\n---\n\n");
+    });
+  } catch {
+    return "";
+  }
+}
+
+async function scrollCursorToBottom(page) {
+  await page
+    .evaluate(() => {
+      const nodes = [
+        ...document.querySelectorAll('[data-testid*="scroll" i], main, [role="main"], [class*="scroll" i]'),
+        document.scrollingElement,
+      ].filter(Boolean);
+      for (const el of nodes) {
+        try {
+          el.scrollTop = el.scrollHeight;
+        } catch {
+          // ignore
+        }
+      }
+      window.scrollTo(0, document.body.scrollHeight);
+    })
+    .catch(() => {});
+  await sleep(400);
+}
+
+/**
  * Composer action button state:
  * - stop  => agent is working (Send morphs into Stop)
  * - send  => idle / ready for follow-up (work finished or not started)
@@ -364,34 +425,115 @@ function pickAssistantPayload(fullText, previousText = "", loopIndex = 1) {
   if (!text) return "";
 
   const marker = promptCompletedMarker(loopIndex);
-  const markerIdx = text.toLowerCase().lastIndexOf(marker.toLowerCase());
-  if (markerIdx >= 0) {
-    // Prefer content leading up to the completion marker (the actual report).
-    const start = Math.max(0, markerIdx - 20000);
-    return text.slice(start, markerIdx + marker.length + 80).trim();
+  const lower = text.toLowerCase();
+  const markerLower = marker.toLowerCase();
+
+  // Find every "Prompt N Completed" — outgoing instruction has one, assistant adds another.
+  const positions = [];
+  for (let i = 0; i < lower.length; ) {
+    const found = lower.indexOf(markerLower, i);
+    if (found < 0) break;
+    positions.push(found);
+    i = found + markerLower.length;
   }
 
-  const workedIdx = text.toLowerCase().lastIndexOf("worked for");
+  const MAX = 100_000;
+
+  if (positions.length >= 2) {
+    const last = positions[positions.length - 1];
+    const prev = positions[positions.length - 2];
+    // Between instruction marker and completion marker ≈ assistant turn (+ tiny user footer).
+    let chunk = text.slice(prev + marker.length, last + marker.length + 40).trim();
+    chunk = chunk
+      .replace(/^then stop\.[^\n]*\n*/i, "")
+      .replace(/^do not wait for more instructions\.?\n*/i, "")
+      .trim();
+    if (chunk.length > 40) return chunk.slice(0, MAX);
+  }
+
+  if (positions.length === 1) {
+    const last = positions[0];
+    const before = text.slice(0, last);
+    // Start after our send footer when possible.
+    const footerKeys = [
+      "when you fully finish this task",
+      "print exactly this line on its own",
+      "-----",
+    ];
+    let start = Math.max(0, last - MAX);
+    for (const key of footerKeys) {
+      const at = before.toLowerCase().lastIndexOf(key);
+      if (at > start) start = at;
+    }
+    let chunk = text.slice(start, last + marker.length + 40).trim();
+    if (chunk.length > 40) return chunk.slice(0, MAX);
+  }
+
+  const workedIdx = lower.lastIndexOf("worked for");
   if (workedIdx >= 0) {
-    return text.slice(Math.max(0, workedIdx - 800), workedIdx + 20000).trim();
+    return text.slice(Math.max(0, workedIdx - 2000), workedIdx + MAX).trim().slice(0, MAX);
   }
 
-  const changesIdx = text.toLowerCase().lastIndexOf("changes made");
-  if (changesIdx >= 0) return text.slice(changesIdx, changesIdx + 20000).trim();
+  const changesIdx = lower.lastIndexOf("changes made");
+  if (changesIdx >= 0) return text.slice(changesIdx, changesIdx + MAX).trim().slice(0, MAX);
 
-  return text.slice(-20000).trim();
+  // Prefer delta vs previous snapshot when we have one.
+  const prev = String(previousText || "").trim();
+  if (prev && text.length > prev.length + 40) {
+    // Find where previous ends inside current; take the tail.
+    const overlapAt = text.indexOf(prev.slice(-200));
+    if (overlapAt >= 0) {
+      const delta = text.slice(overlapAt + 200).trim();
+      if (delta.length > 40) return delta.slice(0, MAX);
+    }
+    return text.slice(prev.length).trim().slice(0, MAX) || text.slice(-MAX).trim();
+  }
+
+  return text.slice(-MAX).trim();
 }
 
-export async function getLatestCursorText(page) {
-  if (page.__lastCursorText?.trim()) {
-    const cached = page.__lastCursorText.trim();
-    page.__lastCursorText = "";
-    return cached;
-  }
+/**
+ * Read Cursor's latest reply for handoff to GPT.
+ * Always refreshes from the page (cache alone was losing real responses).
+ */
+export async function getLatestCursorText(page, loopIndex = 1, previousText = "") {
+  await page.bringToFront().catch(() => {});
+  await scrollCursorToBottom(page);
+  await sleep(800);
+
+  const cached = String(page.__lastCursorText || "").trim();
+  page.__lastCursorText = "";
+
+  const domText = String((await collectAssistantDomText(page)) || "").trim();
   const full = await collectPageText(page);
-  const payload = pickAssistantPayload(full);
-  if (payload.length > 40) return payload;
-  throw new Error("Could not read Cursor agent response text.");
+  const fromFull = pickAssistantPayload(full, previousText, loopIndex);
+  const fromDom = domText
+    ? pickAssistantPayload(domText, previousText, loopIndex) || domText
+    : "";
+
+  // Prefer the longest plausible reply that mentions the completion marker when expected.
+  const marker = promptCompletedMarker(loopIndex);
+  const candidates = [fromDom, fromFull, cached, domText].filter((t) => t && t.trim().length > 40);
+  candidates.sort((a, b) => {
+    const aMark = a.toLowerCase().includes(marker.toLowerCase()) ? 1 : 0;
+    const bMark = b.toLowerCase().includes(marker.toLowerCase()) ? 1 : 0;
+    if (aMark !== bMark) return bMark - aMark;
+    return b.length - a.length;
+  });
+
+  const best = candidates[0] || "";
+  if (best.length > 40) {
+    console.log(
+      `Cursor reply extracted: ${best.length} chars` +
+        (best.toLowerCase().includes(marker.toLowerCase()) ? ` (has ${marker})` : " (no marker in slice)")
+    );
+    return best.trim();
+  }
+
+  throw new Error(
+    "Could not read Cursor agent response text. " +
+      "Open the Cursor tab and check the latest assistant message is visible."
+  );
 }
 
 export async function captureCursorImages(page, loopIndex) {
